@@ -378,7 +378,7 @@ class MultiModuleRetainTest extends ModuleLevelTest {
 
 	public function test_2 () {
 
-		// this test will both data seeded for `test_1` along with any insertion it made
+		// this test will contain both data seeded for `test_1` along with any insertion it made
 	}
 }
 ```

@@ -575,23 +575,27 @@ class CheckoutCart extends UpdatefulService implements SystemModelEdit {
 
 	public const EMPTIED_CART = "cart_empty";
 
-	public function __construct (private readonly Events $eventManager) {
+	public function __construct (
+		protected readonly CartService $cartService,
+		private readonly Events $eventManager) {
 
 		//
 	}
 
 	public function updateModels (object $cartBuilder) {
 
-		$cartBuilder->products()->update(["sold" => true]);
+		$products = $this->modelsToUpdate();
 
-		$this->emitHelper (self::EMPTIED_CART, $cartBuilder); // received by payment, order modules etc
+		$products->each->update(["sold" => true]);
 
-		return $cartBuilder->delete();
+		$this->emitHelper(self::EMPTIED_CART, $products); // received by payment, order modules etc
+
+		return $this->cartService->delete();
 	}
 
-	public function modelsToUpdate (object $cartBuilder):array {
+	public function modelsToUpdate ():iterable {
 
-		return $cartBuilder->products;
+		return $this->cartService->authProducts;
 	}
 }
 ```
