@@ -12,7 +12,7 @@ features:
   details: Modular-monoliths. Class names are preferred over aliases in all cases (labelling, payloads/DTOs, routing); for discoverability, lazy-loading, binding them, etc. Strongly-typed config classes. There are no includes, no runtime folder scanning, no instantiation is done prematurely (during booting or whenever), no statics, magics or globals
 - title: Infinite flexibility
   details: No hard-coded folder names. Dislike the default ORM? Swap it out in a heartbeat! Same goes for templating engine. Bring whatever components you're used to along.
-footer: Made with 💉 and 😰 by Nmeri Alphonsus
+footer: Made with love by Nmeri Alphonsus
 ---
 
 ## The Suphle you ordered is here!

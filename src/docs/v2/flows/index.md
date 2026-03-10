@@ -6,39 +6,37 @@ For instance, suppose an author or artiste's online catalog is visited, Flows wo
 
 ## Describing a flow
 
-Flows are written in [route collections](/docs/v1/routing). Each flow is connected to its originating route definition. Continuing with our analogy above, Flows to the books pattern would be defined in the catalog route as follows:
+Flows are written using attributes on coordinator methods. Each flow is connected to its originating route definition. Continuing with our analogy above, Flows to the books pattern would be defined in the catalog coordinator as follows:
 
 ```php
 
-use Suphle\Routing\{BaseCollection, Decorators\HandlingCoordinator};
-
+use Suphle\Coordinators\BaseCoordinator;
+use Suphle\Routing\Attributes\{Route, CollectionFlow, CollectionFlowOperation};
 use Suphle\Response\Format\Json;
+use Suphle\Services\Structures\ModellessPayload;
 
-use Suphle\Flows\ControllerFlows;
+class CatalogPayload extends ModellessPayload
+{
+    public function getDomainObject(): array
+    {
+        return $this->payloadStorage->getKey('data') ?? [];
+    }
+}
 
-use Suphle\Tests\Mocks\Modules\ModuleOne\Coordinators\CatalogCoordinator;
-
-#[HandlingCoordinator(CatalogCoordinator::class)]
-class CatalogCollection extends BaseCollection {
-
-	public function _prefixCurrent ():string {
-
-		return "catalog";
-	}
-
-	public function id () {
-
-		$renderer = new Json("getCatalog");
-
-		$flow = new ControllerFlows;
-
-		$flow->linksTo("books/id", $flow->previousResponse()
-
-			->collectionNode("data")->pipeTo()
-		);
-
-		$this->_httpGet($renderer->setFlow($flow));
-	}
+class CatalogCoordinator extends BaseCoordinator
+{
+    #[Route('catalog/{id}')]
+    #[CollectionFlow(
+        target: 'books/{id}',
+        source: 'data',
+        operation: CollectionFlowOperation::PIPE_TO
+    )]
+    public function getCatalog(CatalogPayload $payload): Json
+    {
+        return new Json([
+            'data' => $this->catalogService->getItems($payload->getDomainObject())
+        ]);
+    }
 }
 ```
 
@@ -78,21 +76,35 @@ Think of these categories as JavaScript Promises, since they don't work on the r
 
 ```php
 
-$flow->linksTo("resource/id", $flow->previousResponse()
-
-	->collectionNode("store.id")->setFromService($serviceContext)
-)
+#[CollectionFlow(
+    target: 'resource/{id}',
+    source: 'store.id',
+    operation: CollectionFlowOperation::PIPE_TO
+)]
 ```
 
 Each handler method returns an instance of the flow type for fluent chaining/operation piping, although handler methods at your disposal will likely deliver for most use cases.
 
 ### Handling single nodes
 
-Access to a node holding a single value is obtained using the `getNode` method.
+Access to a node holding a single value is obtained using the `SingleFlow` attribute.
 
 ```php
 
-$flow->previousResponse()->getNode("node_name")
+use Suphle\Routing\Attributes\{Route, SingleFlow, SingleFlowOperation};
+
+#[Route('products/{id}')]
+#[SingleFlow(
+    target: '/products/recommended',
+    source: 'next_page_url',
+    operation: SingleFlowOperation::ALTERS_QUERY
+)]
+public function getProduct(CatalogPayload $payload): Json
+{
+    return new Json([
+        'next_page_url' => '/products/recommended?page=2&category=electronics'
+    ]);
+}
 ```
 
 Once this node is retrieved, we have to instruct Flows on how to prepare it for subsequent requests by attaching single-node based operations to it. The following operations are available for this Flow category:
@@ -103,50 +115,54 @@ This sort of operation is useful when the preceding response is the result of ru
 
 ```php
 
-public function id () {
-
-	$renderer = new Json("showProduct");
-
-	$flow = new ControllerFlows;
-
-	$flow->linksTo("/products/recommended", $flow
-
-		->previousResponse()->getNode("next_page_url")
-
-		->altersQuery()
-	);
-
-	$this->_httpGet($renderer->setFlow($flow));
-};
+#[Route('products/{id}')]
+#[SingleFlow(
+    target: '/products/recommended',
+    source: 'next_page_url',
+    operation: SingleFlowOperation::ALTERS_QUERY
+)]
+public function getProduct(CatalogPayload $payload): Json
+{
+    return new Json([
+        'next_page_url' => '/products/recommended?page=2&category=electronics'
+    ]);
+}
 ```
 
 The query at given node is extracted and hydrated into `Suphle\Request\PayloadStorage` for you. Thus, app will treat it just as an organic request to that endpoint with those query parameters.
 
 ### Handling collection nodes
 
-Access to a node with data that can be either further manipulated or filtered into an operation is obtained using the `collectionNode` method.
+Access to a node with data that can be either further manipulated or filtered into an operation is obtained using the `CollectionFlow` attribute.
 
 ```php
 
-$flow->previousResponse()->collectionNode("node_name")
+#[CollectionFlow(
+    target: 'books/{id}',
+    source: 'data',
+    operation: CollectionFlowOperation::PIPE_TO
+)]
 ```
 
-`collectionNode` takes an optional 2nd argument referring to what property on each collection item to work with. We saw in an earlier example, IDs of each item were extracted and forwarded to the application. To extract some other property, we'll use the `columnName` parameter as follows:
+`CollectionFlow` takes an optional `columnName` parameter referring to what property on each collection item to work with. We saw in an earlier example, IDs of each item were extracted and forwarded to the application. To extract some other property, we'll use the `columnName` parameter as follows:
 
 ```php
 
-$flow->linksTo("books/id", $flow->previousResponse()
-
-	->collectionNode("data", "name")->pipeTo()
-);
+#[CollectionFlow(
+    target: 'books/{id}',
+    source: 'data',
+    operation: CollectionFlowOperation::PIPE_TO,
+    columnName: 'name'
+)]
 ```
 
-This will cause the name of each book to be forwarded to "books/id". Operations under this category will populate `Suphle\Routing\PathPlaceholders` for subsequent requests, on a matching key.
+This will cause the name of each book to be forwarded to "books/{id}". Operations under this category will populate `Suphle\Routing\PathPlaceholders` for subsequent requests, on a matching key.
 
 ```php
 
 $this->pathPlaceholders->getSegmentValue("name");
 ```
+
 Where absent, this argument will fallback to the "id" property.
 
 The following operations are available for collection-based Flows:
@@ -157,10 +173,11 @@ This sort of operation extracts and forwards the given property from each item i
 
 ```php
 
-$flow->linksTo("books/id", $flow->previousResponse()
-
-	->collectionNode("data")->pipeTo()
-);
+#[CollectionFlow(
+    target: 'books/{id}',
+    source: 'data',
+    operation: CollectionFlowOperation::PIPE_TO
+)]
 ```
 
 #### Concatenated indexes operation
@@ -169,10 +186,12 @@ Rather than forwarding each property one after the other, this operation extract
 
 ```php
 
-$flow->linksTo("special-books", $flow->previousResponse()
-
-	->collectionNode("data")->asOne()
-);
+#[CollectionFlow(
+    target: 'special-books',
+    source: 'data',
+    operation: CollectionFlowOperation::AS_ONE,
+    columnName: 'id'
+)]
 ```
 
 Doing so would populate `Suphle\Routing\PathPlaceholders` with a pluralized version of the property. Thus, where the previous dataset allowed us extract IDs, the "special-books" endpoint will receive an "ids" key in its `PathPlaceholders`. The model builder in that subsequent request can then do,
@@ -193,23 +212,24 @@ This operation extracts and forwards only indexes at the extremes of a collectio
 
 ```php
 
-$flow->linksTo("isbn/between", $flow->previousResponse()
-
-	->collectionNode("data")->inRange()
-);
+#[CollectionFlow(
+    target: 'isbn/between',
+    source: 'data',
+    operation: CollectionFlowOperation::IN_RANGE,
+    rangeContext: ['min', 'max']
+)]
 ```
 
-The `pathPlaceholders` would contain the keys "min" and "max" each pointing to their respective values from the preceding payload. Where this is not desired, key names can be customized using `Suphle\Flows\Structures\RangeContext` object like so,
+The `pathPlaceholders` would contain the keys "min" and "max" each pointing to their respective values from the preceding payload. Where this is not desired, key names can be customized using the `rangeContext` parameter like so,
 
 ```php
 
-$flow->linksTo("isbn/between", $flow->previousResponse()
-
-	->collectionNode("data")->inRange(new RangeContext(
-
-		"highest", "lowest"
-	))
-);
+#[CollectionFlow(
+    target: 'isbn/between',
+    source: 'data',
+    operation: CollectionFlowOperation::IN_RANGE,
+    rangeContext: ['highest', 'lowest']
+)]
 ```
 
 The `inRange` method has a specialized cousin, `dateRange`, for date comparison of fields.
@@ -220,28 +240,16 @@ The `setFromService` method allows the developer connect a service/class that pr
 
 ```php
 
-public function id () {
-
-	$renderer = new Json("handleFromService");
-
-	$flow = new ControllerFlows;
-
-	$serviceContext = new ServiceContext(FlowService::class, "customHandlePrevious");
-
-	$flow->linksTo("segment", $flow->previousResponse()
-
-		->collectionNode("data")
-
-		->setFromService($serviceContext)
-
-		->inRange()
-	);
-
-	$this->_httpGet($renderer->setFlow($flow));
-}
+#[CollectionFlow(
+    target: 'segment',
+    source: 'data',
+    operation: CollectionFlowOperation::SET_FROM_SERVICE,
+    serviceClass: FlowService::class,
+    serviceMethod: 'customHandlePrevious'
+)]
 ```
 
-`customHandlePrevious` will receive payload verbatim and is expected to return another iterable that would then be treated as previous response. This new iterable can either be returned directly on the subsequent request, or piped to any of the other collection-based operations. Above, it is shown being piped to `inRange`.
+`customHandlePrevious` will receive payload verbatim and is expected to return another iterable that would then be treated as previous response. This new iterable can either be returned directly on the subsequent request, or piped to any of the other collection-based operations.
 
 ```php
 
@@ -284,26 +292,19 @@ This refers to handles that allow us control how long or how much a flow can be 
 
 ### Expiring Flows
 
-We use the `setTTL` method to determine how long we want the resource to be stored. When the time elapses, request will skip the Flow handler and revert to the organic method of user request handling.
+We use the `ttl` parameter to determine how long we want the resource to be stored. When the time elapses, request will skip the Flow handler and revert to the organic method of user request handling.
 
 ```php
 
-$flow->linksTo("books/id", $flow->previousResponse()
-
-	->collectionNode("data")->pipeTo()->setTTL(function ($userId, $pattern) {
-
-		if ($pattern == "books/15") $timeout = new DateInterval("PT3M");
-
-		else $timeout = new DateInterval("PT5M");
-
-		return (new DateTime)->add($timeout);
-	})
-);
+#[CollectionFlow(
+    target: 'books/{id}',
+    source: 'data',
+    operation: CollectionFlowOperation::PIPE_TO,
+    ttl: 'PT5M'
+)]
 ```
 
-`setTTL` takes a callback that receives incoming user ID and the actual path being requested. Resources requested by a guest would be denoted by the special user ID `Suphle\Flows\OuterFlowWrapper::ALL_USERS`. These arguments allow for most fine-grained control over every endpoint response stored in the cache. Timeout for cached resources should coincide with how often content is updated, and should fall within the a reasonably short time it should take user to request one of them. Default timeout for all resources is 10 minutes.
-
-Above, `setTTL` is applied to a collection node, but it is equally compatible with other Flow categories. Flow expiration takes precedence over other methods.
+The `ttl` parameter accepts a DateInterval string. Timeout for cached resources should coincide with how often content is updated, and should fall within the a reasonably short time it should take user to request one of them. Default timeout for all resources is 10 minutes.
 
 ### Limiting access by hits
 
@@ -311,13 +312,12 @@ This Flow invalidation method determines how many times a resource should be acc
 
 ```php
 
-$flow->linksTo("books/id", $flow->previousResponse()
-
-	->collectionNode("data")->pipeTo()->setMaxHits(function ($userId, $pattern) {
-
-		return 3;
-	})
-);
+#[CollectionFlow(
+    target: 'books/{id}',
+    source: 'data',
+    operation: CollectionFlowOperation::PIPE_TO,
+    maxHits: 3
+)]
 ```
 
 Its default value is 1.
@@ -355,10 +355,11 @@ The mechanism used by the first user will determine what mechanism is used for t
 
 ```php
 
-$flow->linksTo("books/id", $flow->previousResponse() // all visitors to this pattern must conform to the mechanism used by the first request to it
-
-	->collectionNode("data")->pipeTo()
-);
+#[CollectionFlow(
+    target: 'books/{id}',
+    source: 'data',
+    operation: CollectionFlowOperation::PIPE_TO
+)] // all visitors to this pattern must conform to the mechanism used by the first request to it
 ```
 
 ### Database precaution
@@ -413,18 +414,16 @@ This method allows us confirm whether visiting a given URL does trigger hydratio
 
 ```php
 
-public function id () {
-
-	$renderer = new Json("getCatalog");
-
-	$flow = new ControllerFlows;
-
-	$flow->linksTo("books/id", $flow->previousResponse()
-
-		->collectionNode("data")->pipeTo()
-	);
-
-	$this->_httpGet($renderer->setFlow($flow));
+#[CollectionFlow(
+    target: 'books/{id}',
+    source: 'data',
+    operation: CollectionFlowOperation::PIPE_TO
+)]
+public function getCatalog(CatalogPayload $payload): Json
+{
+    return new Json([
+        'data' => $this->catalogService->getItems($payload->getDomainObject())
+    ]);
 }
 ```
 

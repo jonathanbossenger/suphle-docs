@@ -57,7 +57,9 @@ class UserCoordinator extends ServiceCoordinator
     {
         $this->userService->create($this->payloadStorage->fullPayload());
         
-        return new Redirect('/users');
+        return new Redirect(function() {
+            return '/users';
+        });
     }
 }
 ```
@@ -71,12 +73,11 @@ class UserCoordinator extends ServiceCoordinator
 {
     public function createUser(): Reload
     {
-        // The framework automatically provides validation_errors and payload_storage
-        // when validation fails
-        return new Reload([
-            \Suphle\Exception\Diffusers\ValidationFailureDiffuser::ERRORS_PRESENCE => ['email' => 'Invalid email'],
-            \Suphle\Exception\Diffusers\ValidationFailureDiffuser::PAYLOAD_KEY => ['email' => 'invalid-email']
-        ]);
+        // Process the user creation
+        $this->userService->create($this->payloadReader->getAll());
+        
+        // Return Reload - framework handles validation data automatically
+        return new Reload();
     }
 }
 ```

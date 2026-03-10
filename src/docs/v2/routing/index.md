@@ -62,6 +62,39 @@ public function updateUser(): Json
 }
 ```
 
+## Named Routes
+
+You can assign names to routes directly inside the `#[Route]` attribute using the `view_name` parameter. This makes it easy to generate URLs for those routes inside your views without hardcoding them.
+
+```php
+use Suphle\Routing\Attributes\Route;
+use Suphle\Routing\HttpMethod;
+use Suphle\Response\Format\Markup;
+
+class ProductCoordinator
+{
+    public const SHOW_PRODUCT = 'products.show';
+
+    #[Route("products/{id}", HttpMethod::GET, view_name: self::SHOW_PRODUCT)]
+    public function showProduct(): Markup
+    {
+        $id = $this->pathPlaceholders->getSegmentValue("id");
+        return new Markup('products.show', ['id' => $id]);
+    }
+}
+```
+
+When you return a `Markup` response, Suphle automatically injects the `$namedRoutes` component into the template engine. You can then use it to generate the URL, supplying values for dynamic segments if needed:
+
+```html
+<!-- Inside your Blade or Twig view -->
+<a href="{{ $namedRoutes->expandRoute(\App\Coordinators\ProductCoordinator::SHOW_PRODUCT, ['id' => 5]) }}">
+    View Product
+</a>
+```
+
+The `expandRoute` method will safely interpolate the parameters and trigger a `RuntimeException` if a parameter is missing or the route name doesn't exist.
+
 ## Route Prefixing
 
 Use the `#[RoutePrefix]` attribute on coordinator classes to group related routes under a common prefix:
@@ -101,21 +134,30 @@ This creates routes like:
 - `GET /admin/users`
 - `DELETE /admin/users/{id}`
 
-### Inheriting Route Prefixes
+### RoutePrefix is NOT inherited
 
-Route prefixes can be inherited from parent classes:
+> [!IMPORTANT]
+> `#[RoutePrefix]` is **not** inherited from parent classes. The router only reads the `#[RoutePrefix]` declared directly on each concrete coordinator class. If your coordinator does not declare its own `#[RoutePrefix]`, it will be **silently skipped** and none of its routes will be registered.
 
 ```php
+// ❌ INCORRECT — Coordinator without its own RoutePrefix is silently ignored
 #[RoutePrefix("api")]
-abstract class BaseApiCoordinator
-{
-    // Base API functionality
-}
+abstract class BaseApiCoordinator {}
 
-#[RoutePrefix("v1")]
-class V1ApiCoordinator extends BaseApiCoordinator
+class UserCoordinator extends BaseApiCoordinator
 {
+    // Missing #[RoutePrefix] — this class and all its routes are completely ignored
     #[Route("users", HttpMethod::GET)]
+    public function listUsers(): Json { ... }
+}
+```
+
+```php
+// ✅ CORRECT — Each coordinator declares its own complete prefix
+#[RoutePrefix("api/v1/users")]
+class UserCoordinator extends BaseApiCoordinator
+{
+    #[Route("/", HttpMethod::GET)]
     public function listUsers(): Json
     {
         return new Json(['users' => []]);
@@ -123,9 +165,59 @@ class V1ApiCoordinator extends BaseApiCoordinator
 }
 ```
 
-This creates routes like `GET /api/v1/users`.
+| Old Method Pattern | New Route Path | Notes |
+|---|---|---|
+| `USERS()` | `'/'` | Root path for collection |
+| `USERS_id()` | `'/{id}'` | Parameter with placeholder |
+| `USERS_id_POSTS()` | `'/{id}/posts'` | Nested resource |
+| `_index()` | `'/'` | Index method |
+
+
+
+## API Versioning via Coordinator Inheritance
+
+The most powerful use of `#[RoutePrefix]` is enabling **zero-duplication API versioning**. Because PHP's Reflection API exposes inherited public methods including their attributes, a V2 coordinator can extend a V1 one and _only_ override the endpoints that actually changed.
+
+```php
+// V1: three endpoints
+#[RoutePrefix("api/v1/products")]
+class ProductsV1Coordinator extends ServiceCoordinator
+{
+    #[Route("/", HttpMethod::GET)]
+    public function index(): Json   { /* ... */ }  // stable in v2
+
+    #[Route("/{id}", HttpMethod::GET)]
+    public function show(): Json    { /* ... */ }  // stable in v2
+
+    #[Route("/", HttpMethod::POST)]
+    public function store(): Json   { /* ... schema: legacy */ }  // changed in v2
+}
+```
+
+```php
+// V2: only define what changed. index() and show() are inherited automatically.
+#[RoutePrefix("api/v2/products")]
+class ProductsV2Coordinator extends ProductsV1Coordinator
+{
+    // index()  → GET /api/v2/products/         (inherited, no redefinition needed)
+    // show()   → GET /api/v2/products/{id}     (inherited, no redefinition needed)
+
+    // Only store() changed — override it here:
+    #[Route("/", HttpMethod::POST)]
+    public function store(): Json
+    {
+        return new Json(['version' => 'v2', 'schema' => 'new']);
+    }
+}
+```
+
+The scanner reads `getMethods(IS_PUBLIC)` on the V2 class, which returns all three methods (`index`, `show`, `store`) — two inherited, one overridden. All three get registered under the V2 prefix. **V1 routes remain completely untouched.**
+
+> [!TIP]
+> Register both `ProductsV1Coordinator::class` and `ProductsV2Coordinator::class` in your router config's `getCoordinatorClassesToScan()`. They are treated as independent classes; Suphle does not auto-discover subclasses.
 
 ## HTTP Methods
+
 
 The `HttpMethod` enum provides type-safe HTTP method definitions:
 
@@ -315,9 +407,9 @@ use Suphle\Response\Format\Redirect;
 #[Route("users/create", HttpMethod::POST)]
 public function createUser(): Redirect
 {
-    $this->userService->create($this->payloadStorage->fullPayload());
-    
-    return new Redirect('/users');
+    return new Redirect(function() {
+        return '/users';
+    });
 }
 ```
 
@@ -329,14 +421,15 @@ use Suphle\Response\Format\Reload;
 #[Route("users/create", HttpMethod::POST)]
 public function createUser(): Reload
 {
-    // If validation fails, the framework automatically creates a Reload renderer
-    // with validation_errors and payload_storage keys
-    return new Reload([
-        \Suphle\Exception\Diffusers\ValidationFailureDiffuser::ERRORS_PRESENCE => ['email' => 'Invalid email'],
-        \Suphle\Exception\Diffusers\ValidationFailureDiffuser::PAYLOAD_KEY => ['email' => 'invalid-email']
-    ]);
+    // Process the user creation
+    $this->userService->create($this->payloadReader->getAll());
+    
+    // Return Reload - framework handles validation data automatically
+    return new Reload();
 }
 ```
+
+**Note**: The `Reload` renderer is primarily used by the framework's validation system. When validation fails, the `ValidationFailureDiffuser` automatically creates a `Reload` renderer with validation errors and old input data. Use empty constructor to preserve v1 behavior.
 
 ## Router Configuration
 
@@ -873,17 +966,17 @@ class LowerMirror extends BaseApiCollection {
 	
 	public function API__SEGMENTh () {
 		
-		$this->_httpGet(new Json("segmentHandler"));
+		$this->_httpGet(new Json([]));
 	}
 
 	public function SEGMENT_id() {
 
-		$this->_httpGet(new Json("simplePairOverride"));
+		$this->_httpGet(new Json([]));
 	}
 
 	public function CASCADE () {
 
-		$this->_httpGet(new Json("originalCascade"));
+		$this->_httpGet(new Json([]));
 	}
 }
 ```
@@ -901,12 +994,12 @@ class ApiUpdate2Entry extends BaseApiCollection {
 
 	public function CASCADE () {
 
-		$this->_httpGet(new Json("secondCascade"));
+		$this->_httpGet(new Json([]));
 	}
 
 	public function SEGMENT__IN__SECONDh () {
 
-		$this->_httpGet(new Json("segmentInSecond"));
+		$this->_httpGet(new Json([]));
 	}
 }
 ```
@@ -924,7 +1017,7 @@ class ApiUpdate3Entry extends BaseApiCollection {
 
 	public function CASCADE () {
 
-		$this->_httpGet(new Json("thirdCascade"));
+		$this->_httpGet(new Json([]));
 	}
 }
 ```
@@ -944,7 +1037,7 @@ class LowerMirror extends BaseApiCollection {
 
 	public function CASCADE () {
 
-		$this->_httpGet(new Json("originalCascade"));
+		$this->_httpGet(new Json([]));
 	}
 
 	public function _preMiddleware (PreMiddlewareRegistry $registry):void {
@@ -966,7 +1059,7 @@ class ApiUpdate2Entry extends LowerMirror {
 
 	public function CASCADE () {
 
-		$this->_httpGet(new Json("secondCascade"));
+		$this->_httpGet(new Json([]));
 	}
 }
 ```
@@ -1239,7 +1332,7 @@ class LowerMirror extends BaseApiCollection {
 
 	public function CASCADE () {
 
-		$this->_httpGet(new Json("originalCascade"));
+		$this->_httpGet(new Json([]));
 	}
 }
 ```
@@ -1277,7 +1370,7 @@ public function SHOW__FORMh () {
 
 public function PROCESS__FORMh () {
 	
-	$this->_httpGet(new Reload("getProcessingResult"));
+	$this->_httpGet(new Reload());
 }
 ```
 
@@ -1295,8 +1388,7 @@ When the destination is foreknown, it can simply be returned by the callback giv
 	
 public function PAYMENT__GATEWAYh () {
 	
-	$this->_httpPost(new Redirect("saveCartPayment", function () {
-
+	$this->_httpPost(new Redirect(function () {
 		return "/hello";
 	}));
 }
@@ -1321,8 +1413,7 @@ Assuming `updateModels` returns what amount to charge or some other information 
 	
 public function PAYMENT__GATEWAYh () {
 	
-	$this->_httpPost(new Redirect("paymentGatewayHook", function () {
-
+	$this->_httpPost(new Redirect(function () {
 		return PaymentProcessor::generateUrl($this->rawResponse["message"]);
 	}));
 }
@@ -1336,9 +1427,8 @@ In the example above, the static method of a collaborator, `PaymentProcessor`, w
 	
 public function PAYMENT__GATEWAYh () {
 	
-	$this->_httpPost(new Redirect("paymentGatewayHook", fn () => function (PaymentProcessor $processor) {
-
-		return $processor->generateUrl($this->rawResponse["resource"]->id);
+	$this->_httpPost(new Redirect(function () {
+		return PaymentProcessor::generateUrl($this->rawResponse["resource"]->id);
 	}));
 }
 ```
@@ -1358,7 +1448,7 @@ public function GENERATE__PDFh () {
 		return $fileConfig->getModulePath() . "Files/Reports/" .
 
 		$this->rawResponse["report"]["file_path"];
-	});
+	}));
 }
 ```
 
@@ -1373,7 +1463,7 @@ public function GENERATE__PDFh () {
 		return $fileConfig->getModulePath() . "Files/Reports/" .
 
 		$this->rawResponse["report"]["file_path"];
-	}, fn () => "/my-reports");
+	}, fn () => "/my-reports"));
 }
 ```
 
@@ -1436,7 +1526,7 @@ class CollectionForUser5 extends BaseCollection {
 
 	public function SAME__URLh () {
 
-		$this->_httpGet(new Json("user5Handler"));
+		$this->_httpGet(new Json([]));
 	}
 }
 ```
@@ -1655,3 +1745,99 @@ The canary state string can be passed to your templates for conditional renderin
 
 **Migration note:**
 If you are migrating from v1 or an earlier v2 draft, remove any per-method or controller-level canary/fallback attributes. Use the new class-level `CanaryState` attribute and the `getCanaryState()` method as shown above.
+
+## Route Discovery and Listing
+
+Suphle provides a powerful route discovery system that allows you to inspect all routes across your application. This is particularly useful for debugging, documentation, and understanding your application's routing structure.
+
+### Route List Command
+
+You can get an overview of all routes across all modules in your application by running the `route:list` command:
+
+```bash
+php suphle route:list
+```
+
+This command provides a comprehensive table showing:
+- **Method**: HTTP method (GET, POST, PUT, DELETE, etc.)
+- **Path**: The route pattern
+- **Handler**: The coordinator method that handles the route
+- **Renderer**: The response renderer type
+- **Middleware**: Any middleware applied to the route
+- **Canary State**: Feature flag configuration
+- **Placeholders**: Dynamic route parameters
+
+#### Example Output
+
+```
+Route List
+==========
+
++--------+------------------+------------------------+----------+------------+-------------+-------------+
+| Method | Path            | Handler                | Renderer | Middleware | Canary State| Placeholders|
++--------+------------------+------------------------+----------+------------+-------------+-------------+
+| GET    | /api/v1/users   | UserCoordinator::index | Json     | none       | none        | none        |
+| POST   | /api/v1/users   | UserCoordinator::store | Json     | Auth       | none        | none        |
+| GET    | /api/v1/users/1 | UserCoordinator::show  | Json     | none       | none        | id          |
+| PUT    | /api/v1/users/1 | UserCoordinator::update| Json     | Auth       | none        | id          |
+| DELETE | /api/v1/users/1 | UserCoordinator::delete| Json     | Auth       | none        | id          |
++--------+------------------+------------------------+----------+------------+-------------+-------------+
+
+Total: 5 routes
+```
+
+#### Command Options
+
+The `route:list` command supports several filtering options:
+
+```bash
+# Filter by module
+php suphle route:list --module=ModuleOne
+
+# Filter by HTTP method
+php suphle route:list --method=GET
+
+# Filter by path pattern
+php suphle route:list --path=users
+
+# Output in JSON format
+php suphle route:list --json
+
+# Combine filters
+php suphle route:list --module=ModuleOne --method=POST --json
+```
+
+#### JSON Output Example
+
+When using the `--json` flag, the command outputs structured JSON data:
+
+```json
+[
+  {
+    "method": "GET",
+    "path": "/api/v1/users",
+    "handler": "index",
+    "renderer": "Suphle\\Response\\Format\\Json",
+    "middleware": [],
+    "canary_state": null,
+    "placeholders": [],
+    "coordinator": "App\\Modules\\User\\Coordinators\\UserCoordinator"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/users",
+    "handler": "store",
+    "renderer": "Suphle\\Response\\Format\\Json",
+    "middleware": ["App\\Middleware\\AuthMiddleware"],
+    "canary_state": null,
+    "placeholders": [],
+    "coordinator": "App\\Modules\\User\\Coordinators\\UserCoordinator"
+  }
+]
+```
+
+### Route Detection API
+
+You can also programmatically access route information using the `RouteDetectorService`:
+
+```

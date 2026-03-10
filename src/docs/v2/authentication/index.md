@@ -65,12 +65,18 @@ class ApiLoginMediator implements LoginFlowMediator {
 
 	public function successRenderer ():BaseRenderer {
 
-		return new Json( "successLogin");
+		return new Json([
+			'status' => 'success',
+			'message' => 'Login successful'
+		]);
 	}
 
 	public function failedRenderer ():BaseRenderer {
 
-		return new Json( "failedLogin");
+		return new Json([
+			'status' => 'error',
+			'message' => 'Login failed'
+		]);
 	}
 
 	public function getLoginService ():LoginActions {
@@ -79,13 +85,12 @@ class ApiLoginMediator implements LoginFlowMediator {
 	}
 }
 ```
-You may have observed that the renderers are not wrapped in any HTTP method using `_get`. As we hinted earlier, all routes on this level are designated as `POST`s.
 
 The action handlers given to these renderers are expected to reside on the service returned by the `LoginFlowMediator::getLoginService` method.
 
 ## Login services
 
-These are responsible for communicating with whatever medium we intend to extract users from and authenticate against. They can be considered as [coordinators](/docs/v1/service-coordinators) action methods, but for login requests. The same [validator-for-POST-request rule](/docs/v1/service-coordinators#Validating-incoming-requests) on regular coordinators apply to them.
+These are responsible for communicating with whatever medium we intend to extract users from and authenticate against. They can be considered as [coordinators](/docs/v2/service-coordinators) action methods, but for login requests. The same [validator-for-POST-request rule](/docs/v2/service-coordinators#Validating-incoming-requests) on regular coordinators apply to them.
 
 Login services are classes that implement `Suphle\Contracts\Auth\LoginActions`.
 
@@ -188,143 +193,103 @@ A number of authentication mechanisms are used in practise, depending on capabil
 
 ### Simple authentication tag
 
-In Suphle, the `Suphle\Contracts\Auth\AuthStorage` interface is used to represent the mechanisms mentioned earlier, and must be implemented by each unique mechanism. Collections containing routes we wish to secure must bind those paths to the `Suphle\Auth\RequestScrutinizers\AuthenticateMetaFunnel` collector by overriding the `_preMiddleware` reserved method like so:
+In Suphle, the `Suphle\Contracts\Auth\AuthStorage` interface is used to represent the mechanisms mentioned earlier, and must be implemented by each unique mechanism. Routes we wish to secure must use the `Suphle\Routing\Decorators\Authenticate` attribute like so:
 
 ```php
 
-use Suphle\Routing\{BaseCollection, PreMiddlewareRegistry, Decorators\HandlingCoordinator};
-
-use Suphle\Auth\RequestScrutinizers\AuthenticateMetaFunnel;
+use Suphle\Routing\Decorators\{HandlingCoordinator, Authenticate};
 
 use Suphle\Response\Format\Json;
 
 use Suphle\Tests\Mocks\Modules\ModuleOne\Controllers\BaseCoordinator;
 
 #[HandlingCoordinator(BaseCoordinator::class)]
-class SecureBrowserCollection extends BaseCollection {
+class SecureCoordinator {
 
-	public function SEGMENT() {
+	#[Authenticate]
+	public function secureSegment(): Json {
 
-		$this->_httpGet(new Json("plainSegment"));
-	}
-
-	public function _preMiddleware (PreMiddlewareRegistry $registry):void {
-
-		$registry->tagPatterns(
-
-			new AuthenticateMetaFunnel(["SEGMENT"], $this->hydrateAuthStorage())
-		);
+		return new Json(['message' => 'plainSegment']);
 	}
 }
 ```
 
-With the binding above, all requests to `http://example.com/segment` will require the user to be authenticated by the given authentication mechanism.
+With the binding above, all requests to the route handled by `secureSegment()` will require the user to be authenticated by the given authentication mechanism.
 
-`Suphle\Routing\BaseCollection` injects `Suphle\Contracts\Auth\AuthStorage` into its constructor, which would lift whatever mechnism is set as default in `BaseInterfaceCollection`. If you have any reason to override your route collection's constructor, do well to provide a preferred authentication mechanism for your route authentication needs. The sub-class, `Suphle\Routing\BaseApiCollection` uses the more specific `Suphle\Auth\Storage\TokenStorage`
+The `Authenticate` attribute can be applied to individual methods or to the entire coordinator class to protect all its routes.
 
-### Detaching in nested collections
+### Detaching authentication in nested routes
 
 As route patterns cascade, protection applied to a prefixed pattern or method applies to patterns in the collection below it. To selectively apply authentication to a sub-collection, those patterns to be exempted must be detached from the over-arching authentication lording over them. For example, given the following parent route collection:
 
 ```php
 
-use Suphle\Routing\{BaseCollection, PreMiddlewareRegistry, Decorators\HandlingCoordinator};
-
-use Suphle\Auth\RequestScrutinizers\AuthenticateMetaFunnel;
-
-use Suphle\Tests\Mocks\Modules\ModuleOne\{Routes\Prefix\UnchainParentSecurity, Controllers\BaseCoordinator};
-
-#[HandlingCoordinator(BaseCoordinator::class)]
-class UpperCollection extends BaseCollection {
-
-	public function _preMiddleware (PreMiddlewareRegistry $registry):void {
-
-		$registry->tagPatterns(
-
-			new AuthenticateMetaFunnel(["PREFIX"], $this->hydrateAuthStorage())
-		);
-	}
-	
-	public function PREFIX () {
-		
-		$this->_prefixFor(UnchainParentSecurity::class);
-	}
-}
-```
-
-If we want to open some patterns on `UnchainParentSecurity` to guest and authenticated users alike, we'll use the `PreMiddlewareRegistry::removeTag` method to disconnect them.
-
-```php
-
-use Suphle\Routing\{BaseCollection, PreMiddlewareRegistry, Decorators\HandlingCoordinator};
-
-use Suphle\Response\Format\Json;
-
-use Suphle\Tests\Mocks\Modules\ModuleOne\Controllers\MixedNestedSecuredController;
-
-#[HandlingCoordinator(MixedNestedSecuredController::class)]
-class UnchainParentSecurity extends BaseCollection {
-
-	public function _preMiddleware (PreMiddlewareRegistry $registry):void {
-
-		$registry->removeTag(
-
-			["UNLINK"], AuthenticateMetaFunnel::class
-		);
-	}
-	
-	public function UNLINK () {
-		
-		$this->_httpGet(new Json("handleUnlinked"));
-	}
-	
-	public function RETAIN__AUTHh () {
-		
-		$this->_httpGet(new Json("handleRetained"));
-	}
-}
-```
-
-Now, requests to `/prefix/unlink` will no longer discriminate against the authentication status of its visitor.
-
-### Enforcing user verification
-
-Often, it's not enough for visiting user to be authenticated, but for them to have verified their account using mediums such as email or phone number. In order to achieve this, a collector that evaluates user verification status must be bound after the one to `AuthenticateMetaFunnel`. A default one is provided for you, in the form of  `Suphle\Adapters\Orms\Eloquent\RequestScrutinizers\AccountVerifiedFunnel`.
-
-```php
-
-use Suphle\Routing\{BaseCollection, PreMiddlewareRegistry, Decorators\HandlingCoordinator};
-
-use Suphle\Auth\RequestScrutinizers\AuthenticateMetaFunnel;
-
-use Suphle\Response\Format\Json;
-
-use Suphle\Adapters\Orms\Eloquent\RequestScrutinizers\AccountVerifiedFunnel;
+use Suphle\Routing\Decorators\{HandlingCoordinator, Authenticate};
 
 use Suphle\Tests\Mocks\Modules\ModuleOne\Controllers\BaseCoordinator;
 
 #[HandlingCoordinator(BaseCoordinator::class)]
-class SecureBrowserCollection extends BaseCollection {
+#[Authenticate]
+class UpperCoordinator {
 
-	public function SEGMENT() {
+	public function prefixSegment(): Json {
 
-		$this->_httpGet(new Json("plainSegment"));
-	}
-
-	public function _preMiddleware (PreMiddlewareRegistry $registry):void {
-
-		$patterns = ["SEGMENT"];
-
-		$registry->tagPatterns(
-
-			new AuthenticateMetaFunnel($patterns, $this->hydrateAuthStorage())
-		)
-		->tagPatterns(new AccountVerifiedFunnel($patterns) );
+		return new Json("prefixSegment");
 	}
 }
 ```
 
-`AccountVerifiedFunnel` accepts an optional 2nd argument for declaring what URL is necessary for commencing the verification process. The default value for this parameter is `/accounts/verify`. When the protected route pattern matches [the API prefix](/docs/v1/routing#API-channel-configuration), the visitor will receive a JSON message containing the verification destination, while those originating from the browser will be redirected to it.
+If we want to open some patterns to guest and authenticated users alike, we can use the `Suphle\Routing\Decorators\NoAuthentication` attribute:
+
+```php
+
+use Suphle\Routing\Decorators\{HandlingCoordinator, Authenticate, NoAuthentication};
+
+use Suphle\Response\Format\Json;
+
+use Suphle\Tests\Mocks\Modules\ModuleOne\Controllers\BaseCoordinator;
+
+#[HandlingCoordinator(BaseCoordinator::class)]
+#[Authenticate]
+class MixedCoordinator {
+
+	#[NoAuthentication]
+	public function unlinkedSegment(): Json {
+
+		return new Json("handleUnlinked");
+	}
+	
+	public function retainedSegment(): Json {
+
+		return new Json("handleRetained");
+	}
+}
+```
+
+Now, requests to the route handled by `unlinkedSegment()` will no longer discriminate against the authentication status of its visitor, while `retainedSegment()` remains protected.
+
+### Enforcing user verification
+
+Often, it's not enough for visiting user to be authenticated, but for them to have verified their account using mediums such as email or phone number. In v2, this is handled through route attributes and middleware configuration.
+
+```php
+
+use Suphle\Routing\Attributes\{Route, RoutePrefix, HttpMethod};
+use Suphle\Response\Format\Json;
+use Suphle\Tests\Mocks\Modules\ModuleOne\Coordinators\BaseCoordinator;
+
+#[RoutePrefix('api/v1/secure')]
+class SecureCoordinator extends BaseCoordinator {
+
+    #[Route('segment', method: HttpMethod::GET, middlewares: [AuthenticateMetaFunnel::class, AccountVerifiedFunnel::class])]
+    public function plainSegment(): Json
+    {
+        return new Json(['message' => 'Secure content']);
+    }
+}
+```
+
+`AccountVerifiedFunnel` accepts an optional 2nd argument for declaring what URL is necessary for commencing the verification process. The default value for this parameter is `/accounts/verify`. When the protected route pattern matches [the API prefix](/docs/v2/routing#API-channel-configuration), the visitor will receive a JSON message containing the verification destination, while those originating from the browser will be redirected to it.
 
 The 3rd argument of this collector is used for optionally specifying what field determines account verification status. Majority applications use their database's `email_verified_at` column, thus this is the default value for that parameter. It can be set to any other field is more applicable in your case. However, if your account verification transcends the simplistic single column comparison, consider replacing this collector with a custom one that meets your needs. This collector must then be linked to its handler through the `Suphle\Contracts\Config\Router::scrutinizerHandlers` method.
 

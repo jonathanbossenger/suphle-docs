@@ -45,31 +45,26 @@ This manner of pushing middleware onto the stack relies on the router to have co
 
 #### Attaching middleware to routes
 
-Route-based middleware binding is defined by overidding our route collection's `_assignMiddleware` method with a binding to the registry it receives as argument.
+Route-based middleware binding is defined using the third parameter of the `#[Route]` attribute, which accepts an array of middleware classes.
 
 A sample of such binding will look like this:
 
 ```php
 
-use Suphle\Routing\{BaseCollection, Decorators\HandlingCoordinator};
+use Suphle\Routing\Attributes\{Route, RoutePrefix};
+
+use Suphle\Routing\HttpMethod;
 
 use Suphle\Response\Format\Markup;
 
-use Suphle\Middleware\MiddlewareRegistry;
+use Suphle\Tests\Mocks\Modules\ModuleOne\{Coordinators\BaseCoordinator, Middlewares\ActorsMiddleware};
 
-use Suphle\Tests\Mocks\Modules\ModuleOne\{Coordinators\BaseCoordinator, Middlewares\Collectors\ActorsMiddlewareFunnel};
+class MultiTagCoordinator {
 
-#[HandlingCoordinator(BaseCoordinator::class)]
-class MultiTagSamePattern extends BaseCollection {
+	#[Route("negotiate", HttpMethod::GET, [ActorsMiddleware::class])]
+	public function negotiate(): Markup {
 
-	public function NEGOTIATE () {
-
-		$this->_httpGet(new Markup("plainSegment", "generic.content"));
-	}
-
-	public function _assignMiddleware (MiddlewareRegistry $registry):void {
-
-		$registry->tagPatterns(new ActorsMiddlewareFunnel(["NEGOTIATE"]);
+		return new Markup("plainSegment", "generic.content");
 	}
 }
 ```
@@ -101,54 +96,44 @@ class RouterMock extends Router {
 
 #### Detaching inherited middleware
 
-As with all other constructs applied to [route sub-collections](/docs/v1/routing#Route-prefixing) entry patterns, middleware bindings propagate to all patterns in those sub-collections. However, it's not uncommon for some of those patterns on the sub-collection to opt out of bindings from its parent collections. These can be exempted from the registry using its `removeTag` method.
+As with all other constructs applied to route patterns, middleware bindings can be applied at the class level and inherited by all methods. However, it's not uncommon for some of those methods to opt out of bindings from its parent class. These can be exempted by not specifying middleware on the individual method.
 
-Below, untagging a parent middleware is demonstrated.
+Below, a class-level middleware is applied but one method opts out:
 
 ```php
 
-class MultiTagPrefix extends BaseCollection {
+use Suphle\Routing\Attributes\{Route, RoutePrefix};
 
-	public function NEGOTIATE () {
+use Suphle\Routing\HttpMethod;
 
-		$this->_prefixFor(UntagsMiddleware::class);
+use Suphle\Response\Format\{Markup, Json};
+
+use Suphle\Tests\Mocks\Modules\ModuleOne\{Coordinators\BaseCoordinator, Middlewares\ActorsMiddleware};
+
+#[RoutePrefix("admin")]
+class MultiTagCoordinator {
+
+	#[Route("negotiate", HttpMethod::GET, [ActorsMiddleware::class])]
+	public function negotiate(): Markup {
+
+		return new Markup("plainSegment", "generic.content");
 	}
 
-	public function _assignMiddleware (MiddlewareRegistry $registry):void {
+	#[Route("first-untag", HttpMethod::GET)] // No middleware specified
+	public function firstUntag(): Markup {
 
-		$registry->tagPatterns(
-
-			new ActorsMiddlewareFunnel(["NEGOTIATE"])
-		);
-	}
-}
-
-#[HandlingCoordinator(BaseCoordinator::class)]
-class UntagsMiddleware extends BaseCollection {
-
-	public function FIRST__UNTAGh () {
-
-		$this->_httpGet(new Markup("plainSegment", "generic.content"));
+		return new Markup("plainSegment", "generic.content");
 	}
 
-	public function RETAIN () {
+	#[Route("retain", HttpMethod::GET, [ActorsMiddleware::class])]
+	public function retain(): Json {
 
-		$this->_httpGet(new Json("plainSegment"));
-	}
-
-	public function _assignMiddleware (MiddlewareRegistry $registry):void {
-
-		$registry->removeTag(
-
-			["FIRST__UNTAGh"], ActorsMiddlewareFunnel::class
-		);
+		return new Json(['message' => 'plainSegment']);
 	}
 }
 ```
 
-In this example, `removeTag` is invoked from an immediate sub-collection, although it's just as applicable to any sub-collection met on the tree while composing a URL pattern.
-
-Both `removeTag` and `tagPatterns` return fluent interfaces for chaining as many binding sequences as your needs warrant.
+In this example, `firstUntag()` method opts out of the middleware by not specifying it in the `#[Route]` attribute.
 
 ## Defining middleware
 
