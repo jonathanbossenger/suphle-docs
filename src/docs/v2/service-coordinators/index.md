@@ -19,7 +19,7 @@ In Suphle v2, service coordinator methods return response objects directly inste
 ```php
 use Suphle\Response\Format\Json;
 
-class UserCoordinator extends ServiceCoordinator
+class UserCoordinator extends BaseCoordinator
 {
     public function listUsers(): Json
     {
@@ -35,7 +35,7 @@ class UserCoordinator extends ServiceCoordinator
 ```php
 use Suphle\Response\Format\Markup;
 
-class UserCoordinator extends ServiceCoordinator
+class UserCoordinator extends BaseCoordinator
 {
     public function showUsers(): Markup
     {
@@ -51,7 +51,7 @@ class UserCoordinator extends ServiceCoordinator
 ```php
 use Suphle\Response\Format\Redirect;
 
-class UserCoordinator extends ServiceCoordinator
+class UserCoordinator extends BaseCoordinator
 {
     public function createUser(): Redirect
     {
@@ -69,7 +69,7 @@ class UserCoordinator extends ServiceCoordinator
 ```php
 use Suphle\Response\Format\Reload;
 
-class UserCoordinator extends ServiceCoordinator
+class UserCoordinator extends BaseCoordinator
 {
     public function createUser(): Reload
     {
@@ -92,18 +92,18 @@ class UserCoordinator extends ServiceCoordinator
 
 ## Creating a service coordinator
 
-Candidates for centralization listed are not vague concepts we expect you to religiously adhere to. Suphle provides a class that enforces this obedience automatically, inferring behavior from incoming request type. This means service coordinators will either complain bitterly or simply not work without those candidates. All service coordinators are expected to extend `Suphle\Services\ServiceCoordinator`, and are activated by connecting them through the new attribute-based routing system.
+Candidates for centralization listed are not vague concepts we expect you to religiously adhere to. Suphle provides a class that enforces this obedience automatically, inferring behavior from incoming request type. This means service coordinators will either complain bitterly or simply not work without those candidates. All service coordinators are expected to extend `Suphle\Services\BaseCoordinator`, and are activated by connecting them through the new attribute-based routing system.
 
 ### Basic Coordinator with Routes
 
 ```php
-use Suphle\Services\ServiceCoordinator;
+use Suphle\Services\BaseCoordinator;
 use Suphle\Routing\Attributes\{Route, RoutePrefix};
 use Suphle\Routing\HttpMethod;
 use Suphle\Response\Format\{Json, Markup};
 
 #[RoutePrefix("api")]
-class UserCoordinator extends ServiceCoordinator
+class UserCoordinator extends BaseCoordinator
 {
     #[Route("users", HttpMethod::GET)]
     public function listUsers(): Json
@@ -116,7 +116,7 @@ class UserCoordinator extends ServiceCoordinator
     #[Route("users/{id}", HttpMethod::GET)]
     public function showUser(): Json
     {
-        $userId = $this->pathPlaceholders->getSegmentValue("id");
+        $userId = $this->routeInfo->getSegmentValue("id");
         
         return new Json([
             'user' => $this->userService->find($userId)
@@ -178,7 +178,7 @@ One of the constructs that allows us meet us these requirements is the `Suphle\S
 
 ```php
 
-class ValidatorCoordinator extends ServiceCoordinator {
+class ValidatorCoordinator extends BaseCoordinator {
 
 	#[ValidationRules([
 
@@ -245,7 +245,7 @@ We use this whenever there's direct correlation between segments on the URL or i
 
 ```php
 
-class BaseCoordinator extends ServiceCoordinator {
+class BaseCoordinator extends BaseCoordinator {
 
 	public function getActiveProducts(BaseProductBuilder $productBuilder): Json {
 
@@ -271,15 +271,15 @@ class BaseProductBuilder extends ModelfulPayload {
 
 		return $this->blankProduct->where([
 
-			"id" => $this->pathPlaceholders->getSegmentValue("id")
+			"id" => $this->routeInfo->getSegmentValue("id")
 		]);
 	}
 }
 ```
 
 ```php
-
-class ProductRepository extends UpdatelessService {
+#[DomainService]
+class ProductRepository {
 
 	const PRICE_MIN = 250;
 
@@ -317,7 +317,7 @@ class BaseProductBuilder extends ModelfulPayload {
 
 		return $this->blankProduct->where([
 
-			"id" => $this->pathPlaceholders->getSegmentValue("id")
+			"id" => $this->routeInfo->getSegmentValue("id")
 		]);
 	}
 
@@ -349,7 +349,7 @@ class ExtractsName extends ModellessPayload {
 ```
 
 ```php
-class BaseCoordinator extends ServiceCoordinator {
+class BaseCoordinator extends BaseCoordinator {
 
 	public function computeForeignerDetail (ExtractsName $payloadReader):array {
 
@@ -381,8 +381,6 @@ In order to keep our Coordinators lean, cohesive and disciplined, they have a na
 - `Suphle\Request\PayloadStorage`
 
 - `Suphle\Services\ConditionalFactory`
-
-- `Suphle\Services\UpdatefulService` and `Suphle\Services\UpdatelessService`
 
 - `Suphle\Contracts\IO\Session`,
 
@@ -417,20 +415,38 @@ They're not the kind of object you want to be moving around everywhere. They con
 
 ### Service types
 
-Conceptually, there is a difference between services that update the database and those that don't. All service classes are expected to extend of them.
+All custom logic injected into a Coordinator must be encapsulated within a Service. To maintain architectural discipline, Suphle enforces that these dependencies are explicitly marked with the `Suphle\Services\Decorators\DomainService` attribute.
 
-#### Pure services
+#### Pure Services
 
-This can refer to anything from business logic to database fetch queries. In Suphle, this semantic is represented by the class `Suphle\Services\UpdatelessService`.
+This refers to services responsible for business logic or database fetch queries that do not modify state. By default, a service marked with `#[DomainService]` is considered "pure" (read-only).
 
-#### Database mutating services
+```php
+#[DomainService]
+class ProductFinder {
+    // Logic for fetching data
+}
+```
 
-Services causing database side-effects should extend `Suphle\Services\UpdatefulService`. Regardless of their unique detail, there are basic practices that should be observed on such services:
+#### Database Mutating Services
 
-1. All its public methods should be run within database transactions.
-1. It shouldn't be invoked directly unless it returns a value that should be used within calling scope. Otherwise, it should be triggered as an [event handler](/docs/v1/events).
+Services causing database side-effects must signal their intent by setting the `mutation` property to `true`. This informs the framework that the service is permitted to be a dependency for `POST`, `PUT`, or `DELETE` requests.
 
-Suphle provides sub-decorators that make light work of the common kinds of database transactions, to avoid continuous boilerplate of manual implementation. These sub-decorators are being examined [later in this](#mutative-database-decorators) chapter.
+```php
+#[DomainService(mutation: true)]
+class InventoryManager implements SystemModelEdit {
+    // Logic causing side-effects
+}
+```
+
+Regardless of their unique detail, there are basic practices that should be observed on such services:
+
+1.  **Transaction Wrapping**: All public mutative methods must be run within database transactions. This is enforced by accompanying the `DomainService` attribute with a [mutative decorator](#mutative-database-decorators) like `#[InterceptsCalls(SystemModelEdit::class)]`.
+2.  **Invocation**: It shouldn't be invoked directly unless it returns a value that should be used within the calling scope. Otherwise, it should be triggered as an [event handler](/docs/v2/events).
+
+Suphle provides sub-decorators that make light work of common database transactions, avoiding the continuous boilerplate of manual implementation. These sub-decorators are examined in the [Mutative Database Decorators](#mutative-database-decorators) section.
+
+-----
 
 ## Condition factories
 
@@ -511,7 +527,7 @@ use Suphle\Request\PayloadStorage;
 
 use Suphle\Tests\Mocks\Modules\ModuleOne\Concretes\Services\ConditionalFactoryMock;
 
-class BaseCoordinator extends ServiceCoordinator {
+class BaseCoordinator extends BaseCoordinator {
 
 	public function __construct (
 		protected readonly ConditionalFactoryMock $factory,
@@ -569,10 +585,13 @@ Fallback values for each method can be defined on `ServiceErrorCatcher::failureS
 
 use Suphle\Contracts\Services\CallInterceptors\ServiceErrorCatcher;
 
-use Suphle\Services\{UpdatelessService, Structures\BaseErrorCatcherService, Decorators\InterceptsCalls};
+use Suphle\Services\Structures\BaseErrorCatcherService;
+
+use Suphle\Services\Decorators\{DomainService, InterceptsCalls};
 
 #[InterceptsCalls]
-class DatalessErrorThrower extends UpdatelessService implements ServiceErrorCatcher {
+#[DomainService]
+class DatalessErrorThrower implements ServiceErrorCatcher {
 
 	use BaseErrorCatcherService;
 
@@ -651,189 +670,159 @@ Since PHP doesn't have generics yet, return value for `ServiceErrorCatcher::fail
 
 When using this decorator, as well as all others that extend from it, if the class has constructor promoted properties, those properties cannot use the signature `protected readonly`. They can only be `private readonly`, or the `readonly` keyword removed if the `protected` visibility must be present. This happens because the proxifier will try to reset the properties when they're protected but will be unable to do so since they're readonly. When they're private, it uses those on the original class.
 
-### Mutative database decorators
+-----
 
-There is a narrow list of users authorized to update a database resource:
+### Mutative Database Decorators
 
-- The resource's owner(s).
-- The software's developer.
+Authorization and data integrity are handled at the service layer. Updating a database resource is restricted to authorized owners or specific system processes. To prevent race conditions, unauthorized access, or stale data updates, any service injected into a mutative (POST/PUT/PATCH/DELETE) route must be decorated with a specific Interceptor.
 
-Accordingly, all update queries must first confirm the updater matches resource owner. The service call (possibly housing multiple queries) ought to lock active rows accordingly, run under a database transaction, alert developer on error before rolling back the transaction. Remembering to do all this manually for each mutative service will quickly deteriorate into a nightmare. In order to avoid this conscious effort or boilerplate on the part of developer, Suphle provides decorators from which one must be applied on each `Suphle\Services\UpdatefulService`.
+These decorators ensure that:
 
-By using them, authorization level challenges common among user created resources within database layer are unable to propagate. The user type is what determines applicable decorator.
+  * **Active rows are locked** (`SELECT ... FOR UPDATE`) to prevent race conditions.
+  * **Logic runs within a managed database transaction.**
+  * **Errors are caught and diffused** automatically before rolling back.
 
-#### Programmatic updates
+#### Programmatic Updates
 
-This refers to system-managed updates. Any update where the application is responsible for variables involved in database modification, or where it's not explicitly received from the user should be regarded as a programmatic update. Alterations in this category should decorate the service with `Suphle\Contracts\Services\Decorators\SystemModelEdit`. A decorated service will have the following signature:
+This category covers system-managed updates where the application logic dictates the modification. Services in this category must be marked with `#[DomainService(mutation: true)]` and decorated with `Suphle\Contracts\Services\CallInterceptors\SystemModelEdit`.
+
+**Service Implementation:**
 
 ```php
+namespace AllModules\Shop\Services;
 
-use Suphle\Services\{UpdatefulService, Structures\BaseErrorCatcherService};
-
-use Suphle\Services\Decorators\{InterceptsCalls, VariableDependencies};
-
-use Suphle\Contracts\{Events, Services\CallInterceptors\SystemModelEdit};
-
+use Suphle\Services\Structures\BaseErrorCatcherService;
+use Suphle\Services\Decorators\{DomainService, InterceptsCalls, VariableDependencies};
+use Suphle\Contracts\Services\CallInterceptors\SystemModelEdit;
 use Suphle\Events\EmitProxy;
 
+#[DomainService(mutation: true)]
 #[InterceptsCalls(SystemModelEdit::class)]
-#[VariableDependencies([
+#[VariableDependencies(["setPayloadStorage", "setRouteInfo"])]
+class CheckoutCart implements SystemModelEdit {
 
-	"setPayloadStorage", "setPlaceholderStorage"
-])]
-class CheckoutCart extends UpdatefulService implements SystemModelEdit {
+    use BaseErrorCatcherService, EmitProxy;
 
-	use BaseErrorCatcherService, EmitProxy;
+    public function __construct (protected readonly CartService $cartService) {}
 
-	public const EMPTIED_CART = "cart_empty";
+    /**
+     * Triggered by the Coordinator. The Interceptor wraps this in a transaction.
+     */
+    public function updateModels (object $cartBuilder) {
+        $products = $this->modelsToUpdate($cartBuilder);
 
-	public function __construct (
-		protected readonly CartService $cartService,
-		private readonly Events $eventManager) {
+        $products->each->update(["sold" => true]);
 
-		//
-	}
+        return $this->cartService->delete();
+    }
 
-	public function updateModels (object $cartBuilder) {
-
-		$products = $this->modelsToUpdate();
-
-		$products->each->update(["sold" => true]);
-
-		$this->emitHelper(self::EMPTIED_CART, $products); // received by payment, order modules etc
-
-		return $this->cartService->delete();
-	}
-
-	public function modelsToUpdate ():iterable {
-
-		return $this->cartService->authProducts;
-	}
+    /**
+     * Arguments passed to updateModels are mirrored here for row-locking.
+     */
+    public function modelsToUpdate (object $cartBuilder): iterable {
+        return $this->cartService->authProducts;
+    }
 }
 ```
 
-`CheckoutProducts` will be consumed in a Coordinator like so:
+**Coordinator Consumption:**
+The **Proxy Pattern** is fundamental here. You must call the intercepted method (`updateModels`) directly from the Coordinator. Calling it internally within the service will bypass the interceptor and run outside a transaction.
 
 ```php
+namespace AllModules\Shop\Coordinators;
 
-class CheckoutCoordinator extends ServiceCoordinator {
+use Suphle\Services\BaseCoordinator;
+use Suphle\IO\Http\BaseHttpRequest;
+use Suphle\Response\Format\Json;
+use Suphle\Services\Decorators\{Route, RoutePrefix, ValidationRules};
+use AllModules\Shop\Services\CheckoutCart;
+use AllModules\Shop\Payloads\CartReader;
 
-	public function __construct (protected readonly CheckoutCart $cartService) {
+#[RoutePrefix("api/v1/cart")]
+class CheckoutCoordinator extends BaseCoordinator {
 
-		//
-	}
+    public function __construct (protected readonly CheckoutCart $cartService) {}
 
-	public function previewCartProducts (CartBuilder $cartBuilder):array {
+    #[Route("checkout", HttpMethod::POST)]
+    #[ValidationRules([
+        "cart_id" => "required|integer",
+        "payment_method" => "required|string"
+    ])]
+    public function handlePayment (CartReader $reader): Json {
+        
+        // Calling this on the proxy activates the SystemModelEditHandler
+        $status = $this->cartService->updateModels(
+            (object) $reader->getDomainObject()
+        );
 
-		return [
-
-			"data" => $this->cartService->modelsToUpdate($cartBuilder)
-		];
-	}
-
-	public function paymentGatewayHook (CartBuilder $cartBuilder):array {
-
-		return [
-
-			"message" => $this->cartService->updateModels($cartBuilder)
-		];
-	}
+        return new Json([
+            "success" => $status,
+            "message" => "Order processed successfully"
+        ]);
+    }
 }
 ```
 
-We use the `Suphle\Contracts\Services\CallInterceptors\SystemModelEdit::initializeUpdateModels` method to keep the service idempotent in-between both requests.
+-----
 
-In addition to cohesion, co-locating update subjects beside the data source affords us the advantage of using a soft-lock on the elements from returned from `Suphle\Contracts\Services\CallInterceptors\SystemModelEdit::modelsToUpdate` in order to guarantee their integrity during the transaction.
+#### User-Induced Updates (Multi-User Integrity)
 
-The same options discussed in [Auto service error handling](#Auto-service-error-handling) are available for services with this decoration.
+When a resource is owned by multiple users or subject to frequent updates, there is a risk of "Stale Updates" (User A overwriting User B's changes because they both had the same edit form open). Suphle provides the `MultiUserModelEdit` interceptor to mitigate this.
 
-#### User-induced updates
-
-This refers to updates directly influenced by user input. Resources maintained by single users don't have much to worry about this problem, but there is a delicate collision we risk occuring when a resource is owned by multiple users: they can trigger its update within seconds of each other. Unless you're building a collaborative app, you'd want to reduce chances of this collision. For this use-case, Suphle provides the `Suphle\Contracts\Services\CallInterceptors\MultiUserModelEdit` interface. A service with this decoration would look like this:
+**Service Implementation:**
 
 ```php
+namespace AllModules\Staff\Services;
 
-use Suphle\Contracts\Services\{Models\IntegrityModel, CallInterceptors\MultiUserModelEdit};
+use Suphle\Contracts\Services\CallInterceptors\MultiUserModelEdit;
+use Suphle\Contracts\Services\Models\IntegrityModel;
+use Suphle\Services\Decorators\{DomainService, InterceptsCalls, VariableDependencies};
+use Suphle\Services\Structures\BaseErrorCatcherService;
 
-use Suphle\Services\{UpdatefulService, Structures\BaseErrorCatcherService};
-
-use Suphle\Services\Decorators\{InterceptsCalls, VariableDependencies};
-
-use Suphle\Tests\Mocks\Models\Eloquent\Employment;
-
+#[DomainService(mutation: true)]
 #[InterceptsCalls(MultiUserModelEdit::class)]
-#[VariableDependencies([
+#[VariableDependencies(["setPayloadStorage", "setRouteInfo"])]
+class EmploymentService implements MultiUserModelEdit {
 
-	"setPayloadStorage", "setPlaceholderStorage"
-])]
-class EmploymentEditMock extends UpdatefulService implements MultiUserModelEdit {
+    use BaseErrorCatcherService;
 
-	use BaseErrorCatcherService;
+    public function getResource (): IntegrityModel {
+        return Employment::find($this->routeInfo->getSegmentValue("id"));
+    }
 
-	public function __construct (private readonly Employment $blankModel) {
-
-		//
-	}
-
-	public function getResource ():IntegrityModel {
-
-		return $this->blankModel->find(
-
-			$this->pathPlaceholders->getSegmentValue("id")
-		);
-	}
-
-	public function updateResource () {
-
-		$this->model->where([
-
-			"id" => $this->pathPlaceholders->getSegmentValue("id")
-		])
-		->update($this->payloadStorage->only(["salary"]));
-	}
+    public function updateResource (object $data) {
+        // Integrity check happens automatically before this runs
+        $this->getResource()->update(["salary" => $data->salary]);
+    }
 }
 ```
 
-The service will then be consumed in a Coordinator like so:
+**Enforcements of `MultiUserModelEdit`:**
 
-```php
+  * **Authorization Requirement**: The call to `getResource` will throw a `Suphle\Exception\Explosives\EditIntegrityException` if no [path authorization](/docs/authorization) is found.
+  * **Stale Check**: Update requests must include a field (timestamp or hash) indicating the resource matches its last edited state. If the database row has changed since the user loaded the form, a `StaleEditDiffuser` catches the resulting exception.
+      * **Status code**: 400
+      * **Default Behavior**: Re-renders the form/payload with error indicators.
 
-class EmploymentCoordinator extends ServiceCoordinator {
+-----
 
-	public function __construct (protected readonly EmploymentEditMock $employmentService) {
+#### Comparison of Decorators
 
-		//
-	}
+| Feature | SystemModelEdit | MultiUserModelEdit |
+| :--- | :--- | :--- |
+| **Primary Use** | Internal/Programmatic | User-facing forms |
+| **Locking** | Manual via `modelsToUpdate` | Automatic via `getResource` |
+| **Integrity** | Transactional | Transactional + Stale-check |
+| **Security** | `mutation: true` | `mutation: true` + Ownership check |
 
-	public function employmentDetails ():array {
+-----
 
-		return [
+#### Auto Service Error Handling
 
-			"data" => $this->employmentService->getResource()
-		];
-	}
+Decorated services gain automated error handling via the `BaseErrorCatcherService` trait. If an exception occurs:
 
-	public function editEmployment ():array {
-
-		return [
-
-			"message" => $this->employmentService->updateResource(
-
-				$this->payloadStorage->only(["salary"])
-			)
-		];
-	}
-}
-```
-
-The setup above looks similar to `Suphle\Contracts\Services\CallInterceptors\SystemModelEdit`, but has some significant enforcements:
-
-- The call to `Suphle\Contracts\Services\CallInterceptors\MultiUserModelEdit::getResource` will throw a `Suphle\Exception\Explosives\EditIntegrityException` if no [path authorization](/docs/v1/authorization#Route-based-authorization) is found. This method doesn't enjoy the protection of automatic error handling.
-
-- Update requests must be accompanied by a field indicating resource matches its last edited state, otherwise, a `Suphle\Exception\Explosives\EditIntegrityException` will be thrown. For this field to be active, the resource in question ought to be defined as update-protected. This exception's [default diffuser](/docs/v1/exceptions#Exception-diffusers) is `Suphle\Exception\Diffusers\StaleEditDiffuser`. It responds with received JSON payload or re-renders the previous markup and loaded fields, along with error indicators:
-
-	- Status code: 400
-	- Additional payload path: *errors.0.message*
+1.  The framework **rolls back** the transaction.
+2.  The exception is passed to an **Exception Diffuser**, keeping the Coordinator free of `try-catch` blocks.
 
 ##### Update-protected models
 
@@ -930,7 +919,7 @@ class SimpleSearchService extends SimpleSearch {
 	}	
 }
 
-class BaseCoordinator extends ServiceCoordinator {
+class BaseCoordinator extends BaseCoordinator {
 
 	public function searchProducts (SearchProductBuilder $searchBuilder):iterable {
 

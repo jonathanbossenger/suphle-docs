@@ -1,302 +1,100 @@
 ## Introduction
 
-The term *Middleware* refers to common functionality we want to run before or after a request hits its coordinator action handler. "Common" in this context describes behavior that is applicable to diverse endpoints. They **shouldn't** be used for purposes that don't directly interact with the request/response objects.
+The term *Middleware* refers to common functionality we want to run before or after a request hits its coordinator action handler. "Common" in this context describes behavior that is applicable to diverse endpoints. They **shouldn't** be used for purposes that don't directly interact with the request/response objects.Got it — you want **one single Markdown code block**, with all inner code blocks **escaped** so they don’t render, and everything remains copy-paste safe.
 
-After evaluating pre-middleware collectors attached to the active route patterns, Suphle's request handlers will hand off control to the middleware stack attached to that route.
+---
 
-## Middleware stack
-
-The stack built for each route is sourced from different channels. The origin of each middleware on this stack depends on the functionality it provides. After building the stack, it's executed in descending order. Middleware stacks are sourced from the following channels:
-
-### Generic binding
-
-Middleware defined with this method will be executed for all requests coming into your application. They exist as a convenience as it'll be unrealistic to bind them to each and every route declared on the application. Even if they're not explicitly applicable to all routes, we want to have them in place at a central location, functioning without manual binding to routes.
-
-Generic middleware are declared on the `Suphle\Contracts\Config\Router` config like so:
+#### 1. Security Middleware (`#[PreMiddleware]`)
+These run first and are typically used for Authentication and Authorization. Instead of just a class name, they can accept an array of **Rules**.
 
 ```php
-
-use Suphle\Config\Router;
-
-class RouterMock extends Router {
-
-	/**
-	 * {@inheritdoc}
-	*/
-	public function defaultMiddleware ():array {
-
-		return [
-			
-			SomeGenericMiddleware::class,
-
-			AnotherGenericMiddleware::class,
-
-			...parent::defaultMiddleware()
-		];
-	}
-}
-```
-
-The default `Router` config already specifies base middleware. Unless you intend to overtake the internals of request handling, it's advised that these base middleware reside at the bottom of the stack.
-
-### Route binding
-
-This manner of pushing middleware onto the stack relies on the router to have composed a pattern out of the various collections matching incoming request. Middleware bound using this method will, unless detached by a lower-level collection, apply to the route eventually handled. Middleware stack built from the routing process is pushed to the top of the generic stack described above.
-
-#### Attaching middleware to routes
-
-Route-based middleware binding is defined using the third parameter of the `#[Route]` attribute, which accepts an array of middleware classes.
-
-A sample of such binding will look like this:
-
-```php
-
-use Suphle\Routing\Attributes\{Route, RoutePrefix};
-
-use Suphle\Routing\HttpMethod;
-
-use Suphle\Response\Format\Markup;
-
-use Suphle\Tests\Mocks\Modules\ModuleOne\{Coordinators\BaseCoordinator, Middlewares\ActorsMiddleware};
-
-class MultiTagCoordinator {
-
-	#[Route("negotiate", HttpMethod::GET, [ActorsMiddleware::class])]
-	public function negotiate(): Markup {
-
-		return new Markup("plainSegment", "generic.content");
-	}
-}
-```
-
-In spite of this API, middleware are closer to Coordinators than the route collections, since their existence is wrapped around the lifecycle and execution of eventual Coordinator. It's only more convenient to tag them on routes, instead, since it avails us the need to hydrate Coordinators before determining participating middleware.
-
-Route-based middleware bindings leverage collectors that funnel any details necessary for its backing handler (the actual middleware) to function properly. Collectors are paired to their handlers in the `Suphle\Contracts\Config\Router::collectorHandlers` method:
-
-```php
-
-use Suphle\Config\Router;
-
-use Suphle\Tests\Mocks\Modules\ModuleOne\Middlewares\{ActorsMiddleware, Collectors\ActorsMiddlewareFunnel};
-
-class RouterMock extends Router {
-
-	/**
-	 * {@inheritdoc}
-	*/
-	public function collectorHandlers ():array {
-
-		return array_merge(parent::collectorHandlers(), [
-
-			ActorsMiddlewareFunnel::class => ActorsMiddleware::class
-		]);
-	}
-}
-```
-
-#### Detaching inherited middleware
-
-As with all other constructs applied to route patterns, middleware bindings can be applied at the class level and inherited by all methods. However, it's not uncommon for some of those methods to opt out of bindings from its parent class. These can be exempted by not specifying middleware on the individual method.
-
-Below, a class-level middleware is applied but one method opts out:
-
-```php
-
-use Suphle\Routing\Attributes\{Route, RoutePrefix};
-
-use Suphle\Routing\HttpMethod;
-
-use Suphle\Response\Format\{Markup, Json};
-
-use Suphle\Tests\Mocks\Modules\ModuleOne\{Coordinators\BaseCoordinator, Middlewares\ActorsMiddleware};
-
 #[RoutePrefix("admin")]
-class MultiTagCoordinator {
+#[PreMiddleware(AuthenticateHandler::class, [AdminRule::class, IPCheckRule::class])]
+class AdminCoordinator {
 
-	#[Route("negotiate", HttpMethod::GET, [ActorsMiddleware::class])]
-	public function negotiate(): Markup {
+    #[Route("dashboard")]
+    public function index(): Json { ... }
 
-		return new Markup("plainSegment", "generic.content");
-	}
-
-	#[Route("first-untag", HttpMethod::GET)] // No middleware specified
-	public function firstUntag(): Markup {
-
-		return new Markup("plainSegment", "generic.content");
-	}
-
-	#[Route("retain", HttpMethod::GET, [ActorsMiddleware::class])]
-	public function retain(): Json {
-
-		return new Json(['message' => 'plainSegment']);
-	}
+    /**
+     * Overriding inherited rules: 
+     * This route still uses AuthenticateHandler but swaps the rules entirely.
+     */
+    #[Route("super-secret")]
+    #[PreMiddleware(AuthenticateHandler::class)]
+    public function secret(): Json { ... }
 }
 ```
 
-In this example, `firstUntag()` method opts out of the middleware by not specifying it in the `#[Route]` attribute.
-
-## Defining middleware
-
-Before deciding to implement target functionality as a middleware, it is strongly recommended that you reconsider there is no designated component, Suphle or otherwise, already designated for such feature. The likelihood that a middleware is well suited to accommodate a use-case increases with as many checkboxes below as it can tick:
-
-- Wide applicability across multiple URL patterns. They are the interfaces of routing.
-- It will either alter request execution path or contents/shape of response.
-- It depends on details read from incoming payload.
-- It doesn't precede routing decision e.g. coordinator/renderer choices. Routing work doesn't belong in middleware.
-
-For instance, an implementation common among many web software is enforcing access-level-control through middleware. At worst, user status is evaluated and further execution terminated. Aside the risk of forgetting to bind this middleware to a relevant route pattern, it doesn't interact with the request or response objects in any way. It entirely is an [authorization](/docs/v1/authorization#Model-based-authorization) responsibility that should be handled in a more robust manner at the over-arching model or service level.
-
-After confirming middleware is the way to go for given functionality, we can go about creating one by implementing the `Suphle\Contracts\Routing\Middleware` interface. A most basic middleware will look like this:
+#### 2. Standard Middleware (`#[Middleware]`)
+These handle general request/response logic like JSON formatting or logging.
 
 ```php
+#[Middleware(FormatJsonHandler::class)]
+class ApiCoordinator {
 
-use Suphle\Contracts\{Presentation\BaseRenderer, Routing\Middleware};
-
-use Suphle\Middleware\MiddlewareNexts;
-
-use Suphle\Request\PayloadStorage;
-
-class SomeGenericMiddleware implements Middleware {
-
-	public function process (
-
-		PayloadStorage $request, ?MiddlewareNexts $requestHandler
-	):BaseRenderer {
-
-		return $requestHandler->handle($request);
-	}
+    #[Route("profile")]
+    public function showProfile() { ... }
 }
 ```
 
-In its current state, `SomeGenericMiddleware` is redundant. For it to have any meaning, it has to collaborate with other dependencies to decide whether, or what side-effect to apply to incoming request flow. Often, these dependencies comprise of `PayloadStorage` or `PathPlaceholders`.
+---
+
+#### 3. Clearing Inherited Middleware
+If a class-level middleware is making a specific route inaccessible, you can "yank" it out using `#[ClearMiddleware]`.
 
 ```php
+#[PreMiddleware(AuthenticateHandler::class)]
+class PublicCoordinator {
 
-public function process (
-
-		PayloadStorage $request, ?MiddlewareNexts $requestHandler
-):BaseRenderer {
-
-	if ($request->hasHeader(self::SOME_HEADER))
-
-		// take some action or update some other collaborator
-
-	return $requestHandler->handle($request);
+    #[ClearMiddleware(AuthenticateHandler::class)]
+    #[Route("welcome")]
+    public function landingPage() { ... } // Now public
 }
 ```
 
-The higher up the stack a middleware is, the fresher `PayloadStorage` is and hasn't been tampered with by a preceding middleware. After walking down the stack, this same instance of `PayloadStorage` is passed down to all consumers below e.g. validation evaluator, payload readers, e.t.c.
+---
 
-It's safe to throw exceptions from this layer for requests not satisfying business requirements implemented on the middleware. The exception will bubble up to the over-arching exceptions handler, be it app or module-wide.
-
-### Route-based middleware handlers
-
-Most middleware Collectors will simply require route pattern gathering. Occassionally, one might find the need to feed the handler with additional parameters. However, while doing so, it's advisable that your enhanced collector has an `activePatterns` property as the Framework uses that to determine what route patterns it contains.
-
-An implementation of `ActorsMiddlewareFunnel` that accepts additional arguments will look like this:
+#### 4. The Backing Class (Handler)
+The **Handler** is the code that actually runs. Every handler receives the arguments you passed in the attribute (like your list of rules) via the `setArgs` method.
 
 ```php
+namespace App\Middleware;
 
-use Suphle\Routing\CollectionMetaFunnel;
+class AuthenticateHandler extends BaseMiddleware {
 
-class ActorsMiddlewareFunnel extends CollectionMetaFunnel {
-
-	public function __construct (
-
-		protected readonly array $activePatterns,
-
-		public readonly string $movieCharacter
-	) {
-
-		//
-	}
+    public function process(PayloadStorage $request, ?MiddlewareNexts $next): BaseRenderer
+        
+        foreach ($this->userArgs as $ruleClass) {
+            $rule = $this->container->getClass($ruleClass);
+            
+            if (!$rule->permit()) {
+                throw new Exception("Access Denied");
+            }
+        }
+    }
 }
 ```
 
-It will then be defined as follows on the route collection:
+---
 
-```php
+### Quick Reference
 
-#[HandlingCoordinator(BaseCoordinator::class)]
-class MultiTagSamePattern extends BaseCollection {
+| Type | Attribute | Use Case |
+| :--- | :--- | :--- |
+| **Global** | Defined in Config | Applied to every single request in the module. |
+| **Security** | `#[PreMiddleware]` | Runs first. Used for login and permission checks. |
+| **Standard** | `#[Middleware]` | Runs after security. Used for data processing. |
+| **Negation** | `#[ClearMiddleware]` | Removes a specific handler inherited from the class. |
+---
 
-	public function NEGOTIATE () {
+## Execution Lifecycle
 
-		$this->_httpGet(new Markup("plainSegment", "generic.content"));
-	}
+The framework assembles the stack in the following order:
 
-	public function _assignMiddleware (MiddlewareRegistry $registry):void {
-
-		$registry->tagPatterns(
-
-			new ActorsMiddlewareFunnel(["NEGOTIATE"], "Dr. Ford"
-		);
-	}
-}
-```
-
-That argument can then be consumed in the handler by intercepting the Collector's `movieCharacter` property. 
-
-```php
-
-use Suphle\Middleware\{CollectibleMiddlewareHandler, MiddlewareNexts};
-
-use Suphle\Contracts\Presentation\BaseRenderer;
-
-use Suphle\Request\PayloadStorage;
-
-class ActorsMiddleware extends CollectibleMiddlewareHandler {
-
-	public function process (
-
-		PayloadStorage $request, ?MiddlewareNexts $requestHandler
-	):BaseRenderer {
-
-		$characterName = end($this->metaFunnels)->movieCharacter;
-
-		if ($request->matchesContent("movie_star", $characterName))
-
-			// set some value on the payload
-
-		return $requestHandler->handle($request);
-	}
-}
-```
-
-Any number of collector instances bound to this handler that were attached while the route builder composed the eventual path, will be stored on the handler's `metaFunnels` property as an array of relevant `Suphle\Routing\CollectionMetaFunnel` instances. They can either be traversed or the most recent Collector can be read from the end.
-
-### Post-coordinator execution
-
-`ActorsMiddleware::process` has a statement that reads,
-
-```php
-
-return $requestHandler->handle($request);
-```
-
-The `$requestHandler` argument allows each middleware forward execution to the next one below it. Middleware can interrupt execution of subsequent middleware by excluding the statement.
-
-At the end of the stack is a middleware that will bind result of coordinator action method to attached renderer. This renderer is flushed to user as-is. However, we can define a structure that modifies aspects of evaluated renderer -- usually, aspects not determinable from where renderer was bound to URL pattern. This is done by intercepting renderer returned by the forwarding statement. Suppose we want to add additional keys on all arrays returned by Coordinators this middleware is applied to, we'll adjust it as follows:
-
-```php
-
-public function process (
-
-		PayloadStorage $request, ?MiddlewareNexts $requestHandler
-):BaseRenderer {
-
-	$originalRenderer = $requestHandler->handle($request);
-
-	$originalRenderer->setRawResponse(array_merge(
-
-		$originalRenderer->getRawResponse(), ["foo" => "baz"]
-	));
-
-	return $originalRenderer;
-}
-```
-
-Even though `ActorsMiddleware` may have been ordered earlier in the stack, the method definition above would cause it to technically run after those below it.
+1.  **Default Middleware:** The outermost shell (e.g., CSRF).
+2.  **Scrutinizers:** The security gate (Early exit if unauthorized).
+3.  **Collectors:** The request/response processors.
+4.  **Coordinator:** The target method logic.
 
 ## Testing middleware
 

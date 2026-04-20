@@ -10,7 +10,7 @@ Flows are written using attributes on coordinator methods. Each flow is connecte
 
 ```php
 
-use Suphle\Coordinators\BaseCoordinator;
+use Suphle\Services\BaseCoordinator;
 use Suphle\Routing\Attributes\{Route, CollectionFlow, CollectionFlowOperation};
 use Suphle\Response\Format\Json;
 use Suphle\Services\Structures\ModellessPayload;
@@ -44,7 +44,7 @@ Suppose our coordinator returns the following payload:
 
 ```php
 
-class CatalogCoordinator extends ServiceCoordinator {
+class CatalogCoordinator extends BaseCoordinator {
 
 	/**
 	 * @return Books[]
@@ -133,14 +133,24 @@ The query at given node is extracted and hydrated into `Suphle\Request\PayloadSt
 
 ### Handling collection nodes
 
-Access to a node with data that can be either further manipulated or filtered into an operation is obtained using the `CollectionFlow` attribute.
+Access to a node with data that can be either further manipulated or filtered into an operation is obtained using the `CollectionFlow` attribute. 
+
+Used when the current response contains a list (collection) of data, and you want to warm a unique request for items within that list.
+
+| Argument | Type | Description |
+| :--- | :--- | :--- |
+| `target` | `string` | The URI pattern to warm (e.g., `"users/{id}/stats"`). |
+| `source` | `string` | The key in the response payload containing the data. |
+| `operation` | `Enum` | The strategy for processing the collection. Defaults to CollectionFlowOperation::PIPE_TO |
+| `columnName` | `string` | The specific key in the collection items to map to the URL. |
+| `ttl` | `int` | Expiration time in seconds (Default: 600). |
+| `maxHits` | `int` | Number of times the cache can be served before eviction. |
 
 ```php
 
 #[CollectionFlow(
     target: 'books/{id}',
-    source: 'data',
-    operation: CollectionFlowOperation::PIPE_TO
+    source: 'data'
 )]
 ```
 
@@ -156,11 +166,11 @@ Access to a node with data that can be either further manipulated or filtered in
 )]
 ```
 
-This will cause the name of each book to be forwarded to "books/{id}". Operations under this category will populate `Suphle\Routing\PathPlaceholders` for subsequent requests, on a matching key.
+This will cause the name of each book to be forwarded to "books/{id}". Operations under this category will populate `Suphle\Routing\Structures\RouteInfo` for subsequent requests, on a matching key.
 
 ```php
 
-$this->pathPlaceholders->getSegmentValue("name");
+$this->routeInfo->getSegmentValue("name");
 ```
 
 Where absent, this argument will fallback to the "id" property.
@@ -169,15 +179,20 @@ The following operations are available for collection-based Flows:
 
 #### Iterative operation
 
-This sort of operation extracts and forwards the given property from each item in previous payload to their route handler.
+Warming the profile page for every user returned in a search result.
 
 ```php
-
+#[Route("search", HttpMethod::GET)]
 #[CollectionFlow(
-    target: 'books/{id}',
-    source: 'data',
-    operation: CollectionFlowOperation::PIPE_TO
+    target: "user/{id}/profile",
+    source: "results",
+    columnName: "username" // Maps $results[]['username'] to {id}
 )]
+public function search(): Json {
+    return new Json([
+        "results" => $this->userService->findMany(...)
+    ]);
+}
 ```
 
 #### Concatenated indexes operation
@@ -194,13 +209,13 @@ Rather than forwarding each property one after the other, this operation extract
 )]
 ```
 
-Doing so would populate `Suphle\Routing\PathPlaceholders` with a pluralized version of the property. Thus, where the previous dataset allowed us extract IDs, the "special-books" endpoint will receive an "ids" key in its `PathPlaceholders`. The model builder in that subsequent request can then do,
+Doing so would populate `Suphle\Routing\Structures\RouteInfo` with a pluralized version of the property. Thus, where the previous dataset allowed us extract IDs, the "special-books" endpoint will receive an "ids" key in its `RouteInfo`. The model builder in that subsequent request can then do,
 
 ```php
 
 return $this->blankModel->whereIn(explode(
 
-	$this->pathPlaceholders->getSegmentValue("ids")
+	$this->routeInfo->getSegmentValue("ids")
 ));
 ```
 
@@ -210,60 +225,29 @@ Or, use any other way deemed suitable.
 
 This operation extracts and forwards only indexes at the extremes of a collection, making it feasible for only numeric nodes.
 
+The `routeInfo` would contain the keys "min" and "max" each pointing to their respective values from the preceding payload. Where this is not desired, key names can be customized using the `rangeContext` parameter like so,
+
+```php
+use Suphle\Flows\Structures\RangeContext;
+
+#[CollectionFlow(
+    target: 'isbn/between',
+    source: 'data',
+    operation: CollectionFlowOperation::RANGE,
+    rangeContext: new RangeContext('min', 'max')
+)]
+```
+
+The `Range` mode has a specialized cousin for date comparison of fields.
+
 ```php
 
 #[CollectionFlow(
     target: 'isbn/between',
     source: 'data',
-    operation: CollectionFlowOperation::IN_RANGE,
-    rangeContext: ['min', 'max']
+    operation: CollectionFlowOperation::RANGE,
+    rangeContext: new RangeContext('highest', 'lowest', isDateMode: true)
 )]
-```
-
-The `pathPlaceholders` would contain the keys "min" and "max" each pointing to their respective values from the preceding payload. Where this is not desired, key names can be customized using the `rangeContext` parameter like so,
-
-```php
-
-#[CollectionFlow(
-    target: 'isbn/between',
-    source: 'data',
-    operation: CollectionFlowOperation::IN_RANGE,
-    rangeContext: ['highest', 'lowest']
-)]
-```
-
-The `inRange` method has a specialized cousin, `dateRange`, for date comparison of fields.
-
-#### Custom collection operation
-
-The `setFromService` method allows the developer connect a service/class that primes the outgoing payload as desired.
-
-```php
-
-#[CollectionFlow(
-    target: 'segment',
-    source: 'data',
-    operation: CollectionFlowOperation::SET_FROM_SERVICE,
-    serviceClass: FlowService::class,
-    serviceMethod: 'customHandlePrevious'
-)]
-```
-
-`customHandlePrevious` will receive payload verbatim and is expected to return another iterable that would then be treated as previous response. This new iterable can either be returned directly on the subsequent request, or piped to any of the other collection-based operations.
-
-```php
-
-class FlowService {
-
-	public function customHandlePrevious ( $payload):iterable {
-
-		return array_map(function ($model) {
-
-			return $model->id * 2;
-
-		}, $payload["data"]);
-	}
-}
 ```
 
 ## Activating flows

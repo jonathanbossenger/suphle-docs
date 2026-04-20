@@ -48,7 +48,7 @@ Dynamic segments are defined using curly braces `{}` in the route pattern:
 #[Route("users/{id}", HttpMethod::GET)]
 public function showUser(): Json
 {
-    $userId = $this->pathPlaceholders->getSegmentValue("id");
+    $userId = $this->routeInfo->getSegmentValue("id");
     
     return new Json(['user' => $this->userService->find($userId)]);
 }
@@ -56,7 +56,7 @@ public function showUser(): Json
 #[Route("users/{id}/edit", HttpMethod::PUT)]
 public function updateUser(): Json
 {
-    $userId = $this->pathPlaceholders->getSegmentValue("id");
+    $userId = $this->routeInfo->getSegmentValue("id");
     
     return new Json(['message' => 'User updated successfully']);
 }
@@ -78,7 +78,7 @@ class ProductCoordinator
     #[Route("products/{id}", HttpMethod::GET, view_name: self::SHOW_PRODUCT)]
     public function showProduct(): Markup
     {
-        $id = $this->pathPlaceholders->getSegmentValue("id");
+        $id = $this->routeInfo->getSegmentValue("id");
         return new Markup('products.show', ['id' => $id]);
     }
 }
@@ -181,7 +181,7 @@ The most powerful use of `#[RoutePrefix]` is enabling **zero-duplication API ver
 ```php
 // V1: three endpoints
 #[RoutePrefix("api/v1/products")]
-class ProductsV1Coordinator extends ServiceCoordinator
+class ProductsV1Coordinator extends BaseCoordinator
 {
     #[Route("/", HttpMethod::GET)]
     public function index(): Json   { /* ... */ }  // stable in v2
@@ -213,9 +213,6 @@ class ProductsV2Coordinator extends ProductsV1Coordinator
 
 The scanner reads `getMethods(IS_PUBLIC)` on the V2 class, which returns all three methods (`index`, `show`, `store`) — two inherited, one overridden. All three get registered under the V2 prefix. **V1 routes remain completely untouched.**
 
-> [!TIP]
-> Register both `ProductsV1Coordinator::class` and `ProductsV2Coordinator::class` in your router config's `getCoordinatorClassesToScan()`. They are treated as independent classes; Suphle does not auto-discover subclasses.
-
 ## HTTP Methods
 
 
@@ -230,38 +227,7 @@ use Suphle\Routing\HttpMethod;
 #[Route("users/{id}", HttpMethod::DELETE)] // DELETE request
 ```
 
-## Middleware
-
-Middleware can be applied to routes using the third parameter of the `#[Route]` attribute:
-
-```php
-use Suphle\Routing\Attributes\Route;
-use Suphle\Routing\HttpMethod;
-use Suphle\Response\Format\Json;
-use App\Middleware\AuthMiddleware;
-
-#[Route("admin/users", HttpMethod::GET, [AuthMiddleware::class])]
-public function adminUsers(): Json
-{
-    return new Json(['users' => $this->userService->getAll()]);
-}
-```
-
-Multiple middleware can be applied:
-
-```php
-#[Route("admin/users", HttpMethod::GET, [
-    AuthMiddleware::class,
-    AdminMiddleware::class,
-    LoggingMiddleware::class
-])]
-public function adminUsers(): Json
-{
-    return new Json(['users' => $this->userService->getAll()]);
-}
-```
-
-## Canary/Feature-Flag Routes (v2 Design)
+## Canary/Feature-Flag Routes
 
 Suphle v2 introduces a modern, explicit, and testable feature-flag (canary) system using a class-level `#[CanaryState([...])]` attribute. This replaces the old `CanaryRoute`/fallback pattern with a clear, developer-controlled approach.
 
@@ -276,7 +242,7 @@ Suphle v2 introduces a modern, explicit, and testable feature-flag (canary) syst
 ### Example: Coordinator with Feature Flag
 
 ```php
-use Suphle\Coordinators\BaseCoordinator;
+use Suphle\Services\BaseCoordinator;
 use Suphle\Routing\Attributes\{Route, RoutePrefix, CanaryState, HttpMethod};
 use Suphle\Response\Format\Json;
 use App\Canary\BetaUserCanary;
@@ -338,14 +304,14 @@ class BetaUserCanary implements CanaryEvaluator
 
 ## Route Parameters
 
-Route parameters are automatically extracted and made available through the `PathPlaceholders` service:
+Route parameters are automatically extracted and made available through the `RouteInfo` service:
 
 ```php
 #[Route("users/{id}/posts/{postId}", HttpMethod::GET)]
 public function showUserPost(): Json
 {
-    $userId = $this->pathPlaceholders->getSegmentValue("id");
-    $postId = $this->pathPlaceholders->getSegmentValue("postId");
+    $userId = $this->routeInfo->getSegmentValue("id");
+    $postId = $this->routeInfo->getSegmentValue("postId");
     
     return new Json([
         'post' => $this->postService->findByUserAndPost($userId, $postId)
@@ -361,7 +327,7 @@ For numeric parameters, use `getKeyForPositiveInt`:
 #[Route("users/{id}", HttpMethod::GET)]
 public function showUser(): Json
 {
-    $userId = $this->pathPlaceholders->getKeyForPositiveInt("id");
+    $userId = $this->routeInfo->getKeyForPositiveInt("id");
     
     return new Json(['user' => $this->userService->find($userId)]);
 }
@@ -454,11 +420,6 @@ class RouterMock extends Router
             // Useful for test isolation
         ];
     }
-
-    public function mirrorAuthenticator(): string
-    {
-        return \Suphle\Auth\Repositories\BcryptRepository::class;
-    }
 }
 ```
 
@@ -470,214 +431,9 @@ The `getCoordinatorPath()` method specifies the relative path to coordinator cla
 
 The `getCoordinatorClassesToScan()` method allows filtering which coordinator classes should be scanned for routes. This is particularly useful for test isolation.
 
-## Migration from Route Collections
-
-If you're migrating from the old RouteCollection system:
-
-1. **Replace Route Collections**: Convert route collection methods to coordinator methods with `#[Route]` attributes
-2. **Update Router Config**: Replace `browserEntryRoute()` and `apiStack()` with `getCoordinatorPath()` and `getCoordinatorClassesToScan()`
-3. **Move Middleware**: Convert route-level middleware to attribute parameters
-4. **Update Response Handling**: Ensure coordinator methods return response objects directly
-
-### Example Migration
-
-**Old Route Collection:**
-```php
-class UserRoutes extends BaseCollection
-{
-    public function USERS() {
-        $this->_httpGet(new Markup("listUsers", "users.index"));
-    }
-    
-    public function users_id() {
-        $this->_httpGet(new Markup("showUser", "users.show"));
-    }
-}
-```
-
-**New Attribute-Based:**
-```php
-class UserCoordinator
-{
-    #[Route("users", HttpMethod::GET)]
-    public function listUsers(): Markup
-    {
-        return new Markup('users.index', [
-            'users' => $this->userService->getAll()
-        ]);
-    }
-
-    #[Route("users/{id}", HttpMethod::GET)]
-    public function showUser(): Markup
-    {
-        $userId = $this->pathPlaceholders->getSegmentValue("id");
-        
-        return new Markup('users.show', [
-            'user' => $this->userService->find($userId)
-        ]);
-    }
-}
-```
-
-## Testing
-
-The new routing system supports comprehensive testing with coordinator filtering:
-
-```php
-class UserRoutesTest extends ModuleLevelTest
-{
-    protected function getCoordinatorClassesToScan(): array
-    {
-        return [UserCoordinator::class]; // Test isolation
-    }
-
-    public function test_list_users()
-    {
-        $response = $this->get("/users");
-        
-        $this->assertStatus(200);
-        $this->assertJson(['users' => []]);
-    }
-}
-```
-
-## Benefits of Attribute-Based Routing
-
-1. **Better Discoverability**: Routes are co-located with their handlers
-2. **Type Safety**: PHP 8+ attributes provide compile-time validation
-3. **IDE Support**: Better autocomplete and refactoring support
-4. **Cleaner Code**: No need for separate route collection classes
-5. **Easier Testing**: Direct access to coordinator methods
-6. **Modern PHP**: Leverages PHP 8+ features for better developer experience
-
-## Introduction
-
-At its most basic level, routing is an application layer that can be regarded as a portal between incoming requests and their execution. The application identifies what coordinator will handle an incoming request using the interchangeable terms route/path/pattern. A number of other framework components, collectively known as Pattern Indicators, are equally coupled to the routing concept. However, instead of shuttling between dedicated locations for those indicators and the route patterns, Suphle removes this duplication by offering only one place to house routes and their indicators, if any.
-
-Pattern indicators include [authentication](/docs/v1/authentication#Securing-routes), [authorization](/docs/v1/authorization#Tagging-route-authorization), [middleware](/docs/v1/middleware#Route-binding), and are all bound on what we call Route Collections. These are primarily classes where routes patterns are defined. They are sub-classes of `Suphle\Routing\BaseCollection`. There are a few surprising differences between Suphle's route collections and the way you may be used to defining your routes:
-
-- As already mentioned, collections are classes rather than a single master file. But instead of finding plain strings mutating a static, global, singleton, Suphle patterns are defined as methods on their collection.
-
-- Status code and response format are defined within the patterns, not in the attached coordinator.
-
-This style isn't a vain attempt to stand out but one that happens to come with some perks:
-
-- The same content, coordinators, etc, can be used for diverse response formats.
-
-- Being classes imbues them with qualities such as the ease of replacement (while temporarily modifying features) that extension brings. 
-
-- Class methods give room for further activity pertaining to each pattern, without forming nasty callback hells.
-
-- API response formats can be statically documented.
-
-- The structure of collections and sub-collections allows patterns to be composed down a [trie](https://en.wikipedia.org/wiki/Trie), implying an almost instantenous failure for collections not matching incoming request.
-
-In addition to routing, sub-collections and pattern indication, route collections enable access to advanced concerns such as CRUD, canary routes and route mirroring, which will all be explored in subsequent sections.
-
-PHP 8's Attributes will never be used for route definitions, as they strongly impede route discoverability. A more feasible option for attributes would be an elegant use in pattern indicators. Unfortunately, this will not be pursued since it's faster to read those indicators from methods, where present, rather than reflecting on the collection.
-
-## Pattern syntax
-
-The `BaseCollection` interface defines reserved methods guiding it through the collection's desired behavior. Every other developer-defined method on its implementation will be treated as a route pattern.
-
-### Static pattern segments
-
-Static patterns are treated as defined (rather than as placeholders), by the routing engine. Below, one is connected to the `EntryCoordinator::salesHandler` method.
-
-```php
-
-use Suphle\Routing\{BaseCollection, Decorators\HandlingCoordinator};
-
-use Suphle\Response\Format\Markup;
-
-use AllModules\CarModule\Coordinators\EntryCoordinator;
-
-#[HandlingCoordinator(EntryCoordinator::class)]
-class CarRoutes extends BaseCollection {
-	
-	public function SALES() {
-		
-		$this->_httpGet(new Markup("salesHandler", "show-sales"));
-	}
-}
-```
-
-Upper-case method segments such as `SALES` correspond to their literal equivalents. The definition above says that GET requests to `http://example.com/sales` should execute `EntryCoordinator::salesHandler`, and use the result of that invocation to parse the HTML template at `/configured/path/show-sales.php`.
-
-`_get` and `Markup` refer to the [HTTP method](#HTTP-request-methods) and response [content format](#Presentation-formats) sections respectively.
-
-#### Hyphenated pattern segments
-
-Illegal characters in method definitions mean that static segments containing the special non-alphanumeric characters hyphens and underscores have to introduce additional letters to help signify developer's intent.
-
-In the collection below, we define patterns that route to `field-agents` and `other_staff`, respectively.
-
-```php
-
-#[HandlingCoordinator(EntryCoordinator::class)]
-class EmployeeRoutes extends BaseCollection {
-	
-	public function FIELD__AGENTSh () {
-		
-		$this->_httpGet(new Markup("agentsHandler", "show-agents"));
-	}
-	
-	public function OTHER__STAFFu () {
-		
-		$this->_httpGet(new Markup("staffHandler", "show-staff"));
-	}
-}
-```
-
-With some vigilance, you may observe the introduction of the letters **h** and **u** just after each static segment.
-
-### Dynamic pattern segments
-
-Dynamic patterns bind placeholders to resources accessed with their identifiers. Suppose our database has a table with details about music tracks. Attempting to define static patterns for each row will quickly spiral out of control since we'd have to create new methods each time a new song is added to the database. Not to mention how bloated the collection would grow.
-
-Instead, we employ the use of dynamic segments, by defining them with lower-case characters.
-
-```php
-
-#[HandlingCoordinator(EntryCoordinator::class)]
-class MusicRoutes extends BaseCollection {
-	
-	public function id () {
-		
-		$this->_httpGet(new Markup("artistesHandler", "show-artistes"));
-	}
-}
-```
-
-When the routing engine encounters this collection, the `id` method will be treated as a wildcard matching any single segment of incoming request not explicitly defined as a static pattern. This means a request to `http://example.com/44` will be sent to `EntryCoordinator::artistesHandler`, whereas a request to `http://example.com/44/something-else` will disregard this definition.
-
-#### Empty segments
-
-We use the reserved method `_index` to define a pattern that matches requests without an additional segment after its [prefix](#Route-prefixing). The collection below will direct requests to `http://example.com/` to `EntryCoordinator::musicHome`.
-
-```php
-
-#[HandlingCoordinator(EntryCoordinator::class)]
-class MusicRoutes extends BaseCollection {
-	
-	public function _index () {
-		
-		$this->_httpGet(new Markup("musicHome", "show-homepage"));
-	}
-}
-```
-
-#### Optional placeholder segments
-
-Optional placeholders were part of earlier drafts of the routing component, but was ultimately deprecated. If you find yourself caught in the extremely rare case where it's needed, you can escape by representing the optional segment with any of the following options:
-
-- Using query parameters.
-- As standalone route patterns.
-- As a [sub-collection prefix](#High-level-prefixes).
-
 #### Retrieving pattern segments
 
-The essence of dynamic segments is placeholders planted to represent values unknown at compile-time. The values are subject to each incoming request and are collected [before even hitting](/docs/v1/service-coordinators#Builder-selects) the coordinator. At that layer, the `Suphle\Routing\PathPlaceholders::getSegmentValue` method is used to read the given dynamic segment.
+The essence of dynamic segments is placeholders planted to represent values unknown at compile-time. The values are subject to each incoming request and are collected [before even hitting](/docs/v1/service-coordinators#Builder-selects) the coordinator. At that layer, the `Suphle\Routing\Structures\RouteInfo::getSegmentValue` method is used to read the given dynamic segment.
 
 Given our `MusicRoutes` collection above, the `id` segment of the request to `http://example.com/44` can be fetched like so:
 
@@ -689,7 +445,7 @@ class BaseProductBuilder extends ModelfulPayload {
 
 		return $this->blankProduct->where([
 
-			"id" => $this->pathPlaceholders->getSegmentValue("id")
+			"id" => $this->routeInfo->getSegmentValue("id")
 		]);
 	}
 }
@@ -705,7 +461,7 @@ protected function getBaseCriteria ():object {
 
 	return $this->blankProduct->where(
 
-		$this->pathPlaceholders->getAllSegmentValues()
+		$this->routeInfo->getAllSegmentValues()
 	);
 }
 ```
@@ -722,7 +478,7 @@ protected function getBaseCriteria ():object {
 
 	return $this->blankProduct->where([
 
-		"id" => $this->pathPlaceholders->getKeyForPositiveInt("id")
+		"id" => $this->routeInfo->getKeyForPositiveInt("id")
 	]);
 }
 ```
@@ -733,1018 +489,652 @@ It's only necessary when positivity cannot be left to chance. When this is true 
 
 protected function getBaseCriteria ():object {
 
-	$this->pathPlaceholders->allNumericToPositive();
+	$this->routeInfo->allNumericToPositive();
 
 	return $this->blankProduct->where([
 
-		"id" => $this->pathPlaceholders->getSegmentValue("id")
+		"id" => $this->routeInfo->getSegmentValue("id")
 	]);
 }
-```	
-
-## Route prefixing
-
-Each route collection should only cater to a top-level resource. Patterns pertaining to resources not directly related to the main theme on a collection, e.g. a product resource succeeding a parent resource such as `http://example.com/store/19/products/14`, should be moved to a separate collection. This enhances cohesion among route related functionality and co-location of related patterns.
-
-Sometimes, resources breaking off into sub-collections are exhibiting a potential to exist in their own [modules](/docs/v1/modules). However, do not force it. It's not always reasonable for parts of the application to exist independent of a given parent.
-
-Breaking the route collections to match the URL `http://example.com/store/19/products/14`, we'll define them as follows:
-
-```php
-
-class StoreCollection extends BaseCollection {
-
-	public function _prefixCurrent ():string {
-
-		return "STORE";
-	}
-	
-	public function storeid_PRODUCTS () {
-			
-		$this->_prefixFor(ProductsCollection::class);
-	}
-}
 ```
+---
 
-```php
+## CRUD Resources
 
-class ProductsCollection extends BaseCollection {
-	
-	public function productid () {
-			
-		$this->_httpGet(new Markup("showOne", "show-product"));
-	}
-}
-```
+Suphle provides a structured and opinionated approach to building standard CRUD (Create, Read, Update, Delete) resources. While the framework does not restrict you from defining routes manually, it encourages a consistent, reusable pattern that minimizes repetition and keeps your application logic organized.
 
-There are a number of new introductions in the collections above:
+Instead of repeatedly wiring controllers, services, and views, Suphle offers a scaffolding system that generates a complete working setup for a resource.
 
-### Inline Prefixes
+---
 
-The call to `_prefixFor` in the `StoreCollection::storeid_PRODUCTS` method is used to usher in the sub-collection. Here, the dynamic segment syntax is combined with that of static segments to match the `19/products` part of the full URL. The routing parser interprets single underscores as the forward slash in a URL. This means any length of segments can be represented with a single underscore-delimited method. However, doing this comes with a few downsides that include sacrificing readability and the ability that comes with tries.
+## The CRUD Command
 
-That said, when demoing/prototyping a route, it's more convenient, even forgivable, to use inline prefixes as opposed to creating and connecting a new collection altogether. The following definition will match requests to `http://example.com/store/19`.
-
-```php
-
-class StoreCollection extends BaseCollection {
-	
-	public function STORE_id () {
-			
-		$this->_httpGet(new Markup("showOne", "show-store"));
-	}
-}
-```
-
-All other conventions discussed in preceding sections of this chapter remain valid.
-
-### Prefixing dynamic segments
-
-The only caution to be advised while working with dynamic prefixes in general, not just inline ones, is to endeavor to use unique names when defining dynamic segments rather than generic ones such as `id`. Suppose the definition above is modified to match the URL path `http://example.com/store/19/14` as follows:
-
-```php
-
-class StoreCollection extends BaseCollection {
-	
-	public function STORE_id_id () {
-			
-		$this->_httpGet(new Markup("showProduct", "show-product"));
-	}
-}
-```
-
-Or, its less obvious counterpart,
-
-```php
-
-class StoreCollection extends BaseCollection {
-	
-	public function STORE_id () {
-			
-		$this->_prefixFor(ProductsCollection::class);
-	}
-}
-```
-
-```php
-
-class ProductsCollection extends BaseCollection {
-	
-	public function PRODUCTS_id () {
-			
-		$this->_httpGet(new Markup("showOne", "show-product"));
-	}
-}
-```
-
-When [reading incoming placeholder values](#Retrieving-pattern-segments), the 2nd `id` will overwrite the first.
-
-### High-level prefixes
-
-These are prefixes that apply to the whole collection. We saw them defined using the reserved collection method `_prefixCurrent`. Using it saves us from prepending all our methods with it. In `StoreCollection::_prefixCurrent`, a static prefix is returned, although a dynamic one can equally be returned where applicable.
-
-Sub-collections wield some influence over what prefix is applied on them. For instance, a collection may want to make some adjustments to the prefix of its patterns when it's used as a sub-collection rather than a standalone one.
-
-```php
-
-class ProductsCollection extends BaseCollection {
-
-	public function _prefixCurrent ():string {
-
-		return !empty($this->parentPrefix) ? $this->parentPrefix: "PRODUCTS";
-	}
-	
-	public function productid () {
-			
-		$this->_httpGet(new Markup("showOne", "show-product"));
-	}
-}
-```
-
-When used in isolation, patterns under this collection will all be prefixed with `PRODUCTS`, thereby resulting in paths like `http://example.com/products/14`. When this same collection is used as a sub-collection, its prefix is dictated by the parent one. The property `parentPrefix` is automatically updated for each collection consumed by another, to the value of the method/pattern that initiated it.
-
-## Connecting route collections
-
-Route collections are connected to the module containing them based on what mode we intend to use them in. Each module that performs routing duties must contain an entry collection that would lead to the high-level prefixes it serves. It is this entry collection that must be connected through its appropriate channel.
-
-Unless the module should explicitly respond to only API requests, collections should be configured to the browser channel. All configuration modes are done using methods defined on the `Suphle\Contracts\Config\Router` interface, although it's more convenient to extend its base implementation, `Suphle\Config\Router`.
-
-To activate a `Router` implementation on any channel, at least one collection must be set, otherwise its module will be inert to all routing activities.
-
-### Browser channel configuration
-
-This configuration is done when the name of the module's entry collection is returned by the `Router::browserEntryRoute` method. Suppose the highest-level collection in our module is `BrowserNoPrefix`, we'll lead the route parser into that module like so:
-
-```php
-
-namespace AllModules\ModuleOne\Config;
-
-use Suphle\Config\Router;
-
-use AllModules\ModuleOne\Routes\BrowserNoPrefix;
-
-class RouterMock extends Router {
-
-	public function browserEntryRoute ():?string {
-
-		return BrowserNoPrefix::class;
-	}
-}
-```
-
-When the incoming request doesn't match the API channel and `browserEntryRoute` returns null, route evaluator will skip this module and move on to the next one.
-
-### API channel configuration
-
-We use an explicit API-channel configuration instead of a JSON negotiator middleware so we can have a high-level affair with the API state of the request and perform [actions tailored to it](#Route-mirroring) aside content negotiation. This configuration enables us differentiate between specialized request handlers (unique content on browser vs mobile), response formats, user-accessible version-controlled API results, etc. If none of these are important to you, perhaps you're building a first-party API for an SPA, use the browser channel and return [presentation formats](#presentation-formats) that render to JSON.
-
-It takes 2 settings to complete an API-channel configuration:
-
-1. An API prefix.
-1. The route collection stack.
-
-#### API prefix
-
-This is the primary setting that is checked to determine the API status of an incoming request. Its value is set using the `apiPrefix` method. On the default config class, `Suphle\Config\Router` this method returns the ubiquitous prefix, "api".
-
-**Why `apiPrefix` is essential:** While controllers can prefix themselves with any pattern using `#[RoutePrefix]`, the framework needs a configurable way to detect API routes for features like:
-- Auto-switching to JSON responses for validation errors
-- Skipping CSRF protection for API routes  
-- Mirroring functionality for AJAX session authentication
-- API versioning directory scanning
-- Exception diffusers returning JSON instead of HTML
-
-Without `apiPrefix`, we would be forced to hardcode "api" as the detection pattern, making the system inflexible for applications that use different API prefixes (e.g., "rest", "v1", "api/v2", etc.).
-
-```php
-
-interface Router extends ConfigMarker {
-
-    public function apiPrefix ():string;
-}
-```
-
-#### API collection stack
-
-This allows us connect a list of route collections for each version of the application in a descending order. Each successive version inherits all route patterns on the previous one and is only required to either override these or define new ones that won't be available on earlier versions.
-
-Route collections either defined here or intended for responding to API requests in general, are advised to extend the `Suphle\Routing\BaseApiCollection` class for the more specialized utilities it provides that may be useful to them.
-
-Your modules with start out just one API version collection. Once it has been released to actual clients, that version of it should be treated as immutable, since tampering with it will adversely affect those who rely on its response structures, status codes, URLs, ACLs, or any other user-facing characteristic. Instead, new changes after each official release should be destined for a patch or minor release version.
-
-A mild collection stack introducing new updates in latter versions is shown below.
-
-```php
-
-namespace AllModules\ModuleOne\Config;
-
-use Suphle\Config\Router;
-
-use AllModules\ModuleOne\Routes\ApiRoutes\{V1\LowerMirror, V2\ApiUpdate2Entry, V3\ApiUpdate3Entry};
-
-class RouterMock extends Router {
-
-	public function apiStack ():array {
-
-		return [
-			"v3" => ApiUpdate3Entry::class,
-
-			"v2" => ApiUpdate2Entry::class,
-
-			"v1" => LowerMirror::class
-		];
-	}
-}
-```
-
-```php
-
-use AllModules\ModuleOne\Coordinators\Versions\V1\ApiEntryCoordinator;
-
-#[HandlingCoordinator(ApiEntryCoordinator::class)]
-class LowerMirror extends BaseApiCollection {
-	
-	public function API__SEGMENTh () {
-		
-		$this->_httpGet(new Json([]));
-	}
-
-	public function SEGMENT_id() {
-
-		$this->_httpGet(new Json([]));
-	}
-
-	public function CASCADE () {
-
-		$this->_httpGet(new Json([]));
-	}
-}
-```
-
-On version 2, a fresh handler for an existing route pattern is provided. It exists simultaneously with the first version but will only be visible on this version and those above it on the stack.
-
-In addition, one new pattern is added to this version.
-
-```php
-
-use AllModules\ModuleOne\Coordinators\Versions\V2\ApiUpdate2Coordinator;
-
-#[HandlingCoordinator(ApiUpdate2Coordinator::class)]
-class ApiUpdate2Entry extends BaseApiCollection {
-
-	public function CASCADE () {
-
-		$this->_httpGet(new Json([]));
-	}
-
-	public function SEGMENT__IN__SECONDh () {
-
-		$this->_httpGet(new Json([]));
-	}
-}
-```
-
-Every other pattern not explicitly defined on this collection will be delegated to version collections beneath it.
-
-In version 3, that pattern is overriden once again:
-
-```php
-
-use AllModules\ModuleOne\Coordinators\Versions\V3\ApiUpdate3Coordinator;
-
-#[HandlingCoordinator(ApiUpdate3Coordinator::class)]
-class ApiUpdate3Entry extends BaseApiCollection {
-
-	public function CASCADE () {
-
-		$this->_httpGet(new Json([]));
-	}
-}
-```
-
-When requests come in without a version matching segment, the routing parser will fallback to the topmost version on the stack.
-
-##### Versioned authentication
-
-Since lower routes are sequentially loaded only when preceding ones are not suitable to handle incoming request, authentication is not resolved except it's defined on that version's collection. This means that if `LowerMirror::CASCADE` was [bound to the authentication receptor](/docs/v1/authentication#Securing-routes), the *overrides* on those other collections won't actually have any effect on it unless they themselves lock this pattern.
-
-If the risk of forgetting to rebind overridden route patterns is too great, consider actually extending the lower collection instead of starting on a fresh slate.
-
-```php
-
-#[HandlingCoordinator(ApiEntryCoordinator::class)]
-class LowerMirror extends BaseApiCollection {
-
-	public function CASCADE () {
-
-		$this->_httpGet(new Json([]));
-	}
-
-	public function _preMiddleware (PreMiddlewareRegistry $registry):void {
-
-		$registry->tagPatterns(
-
-			new AuthenticateMetaFunnel(["CASCADE"], $this->hydrateAuthStorage())
-		);
-	}
-}
-```
-
-To save ourselves from re-binding to this overriden pattern, we extend the original collection.
-
-```php
-
-#[HandlingCoordinator(ApiUpdate2Coordinator::class)]
-class ApiUpdate2Entry extends LowerMirror {
-
-	public function CASCADE () {
-
-		$this->_httpGet(new Json([]));
-	}
-}
-```
-
-## CRUD builders
-
-Majority of web applications are built around the Resource -- operations are geared towards its Creation, Reading, Updating and Deletion. This premise informs the permission hooks prescribed on [model-based authorizations](/docs/v1/authorization#Model-based-authorization). Most other endpoints that don't simply do this either combine multiple elements from it or exhibit a more complex form of it.
-
-Consequently, the `Suphle\Contracts\Routing\RouteCollection` interface provides a `_crud` method for marshalling out CRUD pattern definitions with sensible bindings that are also open to customization, using the `CrudBuilder` object that it returns.
-
-When defining CRUD builders, the method under which they're introduced is interpreted as a prefix and will be skipped if it doesn't match incoming request. Thus, to describe requests to an `Envelope` resource, its CRUD builder will be created as follows:
-
-```php
-
-use AllModules\ModuleOne\Coordinators\CrudCoordinator;
-
-#[HandlingCoordinator(CrudCoordinator::class)]
-class BasicRoutes extends BaseCollection {
-	
-	public function SAVE__ALLh () {
-		
-		$this->_crud("envelope")->registerCruds();
-	}
-}
-```
-
-This builder is initialized with the string "envelope", denoting the directory to dig for presentation templates. The eventual path of a markup-based renderer will compute to `/module/view-path/envelope/renderer-template.php`. Renderer template names are indicated in the [browser binding chart](#Browser-CRUD-binding-chart).
-
-### CRUD binding chart
-
-#### Handler constant legend
-
-In order to facilitate pairing and overriding coordinator handlers, CRUD builders provide constants that translate into the actual method names. The Coordinator connected to the collection where this builder is initialized is expected to have any of the methods bundled with that builder on it.
-
-For the sake of brevity, all constants in the table below are derived from the class `Suphle\Routing\Crud\BaseBuilder`.
-
-|Constant name|Method name|
-|-------------|-----------|
-|BaseBuilder::SHOW_CREATE|`showCreateForm`|
-|BaseBuilder::SAVE_NEW|`saveNew`|
-|BaseBuilder::SHOW_ALL|`showAll`|
-|BaseBuilder::SHOW_ONE|`showOne`|
-|BaseBuilder::UPDATE_ONE|`updateOne`|
-|BaseBuilder::DELETE_ONE|`deleteOne`|
-|BaseBuilder::SHOW_SEARCH|`showSearchForm`|
-|BaseBuilder::SHOW_EDIT|`showEditForm`|
-|BaseBuilder::SEARCH_RESULTS|`getSearchResults`|
-
-#### Browser CRUD binding chart
-
-The definition on `BasicRoutes` guarantees that incoming requests will correspond to the handlers on the table below. The renderers will be bound to associated handler constant but are omitted here for the sake of brevity.
-
-|Method pattern |HTTP Method |Handler constant|Renderer |
-|---------------|------------|----------------|---------|
-|CREATE			|GET		|BaseBuilder::SHOW_CREATE|`Markup("create-form")`|
-|SAVE			|POST		|BaseBuilder::SAVE_NEW|`Redirect(/*collection_prefix/new_id*/)`|
-|\_index			|GET		|BaseBuilder::SHOW_ALL|`Markup("show-all")`|
-|id			|GET		|BaseBuilder::SHOW_ONE|`Markup("show-one")`|
-|EDIT_id			|GET		|BaseBuilder::SHOW_EDIT|`Markup("edit-form")`|
-|EDIT			|PUT		|BaseBuilder::UPDATE_ONE|`Reload`|
-|DELETE			|DELETE		|BaseBuilder::DELETE_ONE|`Redirect(/*collection_prefix*/)`|
-|SEARCH			|GET		|BaseBuilder::SHOW_SEARCH|`Markup("show-search-form")`|
-
-In the renderer bound to the `CREATE` pattern, the new ID is derived from an action handler expected to return a payload with the signature:
-
-```php
-
-return ["resource" => $newModel]; // where `newModel` has an `id` property
-```
-
-Going by the definition,
-
-```php
-
-class BasicRoutes extends BaseCollection {
-	
-	public function SAVE__ALLh () {
-		
-		$this->_crud("envelope")->registerCruds();
-	}
-}
-```
-
-The `CREATE` pattern will match `GET` requests to `/save-all/create`.
-
-#### API CRUD binding chart
-
-Renderers returned by the CRUD builder on `BaseCollection` are geared towards a browser-based presentation. When working with an API-based collection, it may be more reasonable to return JSON response formats. `BaseApiCollection` returns a more specialized CRUD builder for this purpose. In all cases, a `Json` renderer bound to the handler constant is returned.
-
-Its full list of available endpoints are enumerated below.
-
-|Method pattern |HTTP Method |Handler constant|
-|---------------|------------|----------------|
-|SAVE			|POST		|BaseBuilder::SAVE_NEW|
-|\_index			|GET		|BaseBuilder::SHOW_ALL|
-|id			|GET		|BaseBuilder::SHOW_ONE|
-|EDIT			|PUT		|BaseBuilder::UPDATE_ONE|
-|DELETE			|DELETE		|BaseBuilder::DELETE_ONE|
-|SEARCH_RESULTS			|GET		|BaseBuilder::SHOW_SEARCH|
-
-Since there's no markup and template folder to read from for this resource, there's no first argument to `_crudJson`.
-
-```php
-
-#[HandlingCoordinator(CrudCoordinator::class)]
-class BasicRoutes extends BaseApiCollection {
-	
-	public function SAVE__ALLh () {
-		
-		$this->_crudJson()->registerCruds();
-	}
-}
-```
-
-### Disabling CRUD routes
-
-Modules without content to serve at all the patterns registered by a builder, or those who simply prefer to restrict access to some of them can disable those patterns with its `disableHandlers` method.
-
-In the collection below, all patterns are registered except that represented by `BaseBuilder::SAVE_NEW`.
-
-```php
-
-#[HandlingCoordinator(CrudCoordinator::class)]
-class BasicRoutes extends BaseApiCollection {
-	
-	public function DISABLE__SOMEh () {
-			
-		$this->_crud("envelope")->disableHandlers([BaseBuilder::SAVE_NEW])
-
-		->registerCruds();
-	}
-}
-```
-
-### Replacing CRUD renderers
-
-When you have a different renderer in mind from the default being bound, the `replaceRenderer` method should be used to return it.
-
-```php
-
-public function OVERRIDE () {
-			
-	$this->_crud("envelope")->replaceRenderer(
-
-		BaseBuilder::SHOW_ONE,
-
-		new Markup("myOverride", "envelope/show-one")
-	)
-	->registerCruds();
-}
-```
-
-`replaceRenderer` only allows for replacing the renderer. If you need to change the route's pattern or its HTTP method, you'll be better off disabling that pattern and redefining it.
-
-### Generating CRUD defaults
-
-Above, we have covered what renderers are associated with a CRUD route's dynamic patterns. However, in the real world, it can be daunting to write all entities relevant to management by hand. For this reason, Suphle's routing component provides a command for automating the procedure. Suppose we wish to manage CRUD for a `Posts` resource, the following command should be used to generate its relevant classes:
+To quickly scaffold a new resource, Suphle exposes the `route:crud` command.
 
 ```bash
-
-php suphle route:crud Posts
+php suphle route:crud Post
 ```
 
-When executed, this command creates the following:
+Running this command generates all the foundational components required to manage a **Post** resource.
 
-- Populated markup templates bound to the renderers discussed above.
-- The model, Post. Its contents are dictated by your underlying ORM, and stored in the conected database folder.
-- Coordinators for both an API bound collection and a regular one.
-- Route collections composed of the route patterns, a base payload reader and their validators.
-- A base test class expected to house test cases for this resource's CRUD endpoints.
-- Migration linked to the generated model.
-- A base payload reader.
+### Command Options
 
-All generated files are populated and properly namespaced. However, most of the Coordinator methods deliberately have no content. The reason for this is that filling them with default behavior tends to encourage coding into the Coordinators, which is strongly discouraged. Since, it's impossible to know what [Service](/docs/v1/service-coordinators#Mutative-database-decorators) this resource should be tailored to, Suphle refrains from generating them. But it is believed that the plethora of files created are enough to get the developer up to speed implementing the business logic itself.
+- **`--is_api` (`-i`)**  
+  Configures the Coordinator for JSON responses and skips HTML view generation. It also automatically adds an api/v1 mirror prefix
 
-What is left to do after generating the files is to perform the actions that cannot be automated. These include:
+- **`--hydrating_module`**  
+  Specifies the module where the generated files should be placed. If omitted, Suphle uses the default (primary) module.
 
-- Adding relevant fields and modifiers to your migration. The default columns are `id` and `title`. Depending on your preference, you may manually run the migration, or let the Framework do that for you when the tests attached to the model are executed.
+---
 
-- Connect the collections through the relevant config method.
+## Scaffolding Output
 
-- Create a [model authorizer](/docs/v1/authorization#Model-based-authorization). Due to the nature of Suphle's project structure, these cannot be generated since they are ORM-specific but ought not to reside within the database layer.
+Internally, the `ResourceBootstrapper` handles file generation by cloning predefined templates into your module.
 
-#### Fine-tuning CRUD generation
+The following components are created:
 
-##### Extracting CRUD to a module
+1. **Coordinator**  
+   A `PostCoordinator` class containing all standard CRUD endpoints, already wired with `#[Route]` attributes.
 
-The default behavior is to output generated files into the first or titular module. As you are not expected to manage all the application's resources on one module, Doing so is antithetical to the concept of modular monoliths. In order to output the files into a different module, we are to specify the module's interface using the `hydrating_module` option.
+2. **Payload Builders**  
+   Classes like `BasePostBuilder` and `SearchPostBuilder` that wrap `PayloadStorage` and provide structured access to request data.
 
-```bash
+3. **Services**  
+   Includes:
+   - `PostAccessor` → Handles create/update operations  
+   - `PostSearcher` → Handles filtering and search queries  
 
-php suphle route:crud Posts --hydrating_module=\\ModuleInteractions\\Posts
-```
+4. **Views (Non-API only)**  
+   Templates for:
+   - `.index` (listing)
+   - `.create` (form)
+   - `.show` (detail view)
+   - `.edit` (edit form)
 
-The command will filter through attached modules in search of one that implements this interface, and launch the extractor into it.
+5. **Database Layer**  
+   - An Eloquent model  
+   - A migration file (preconfigured with basic fields like `id` and `title`)
 
-##### Restricting CRUD views
+---
 
-When the project is primarily API-based, resource views may prove surplus to requirements. In this case, we want to pass the `is_api` option.
+## The CRUD Coordinator
 
-```bash
+All generated logic is grouped inside a Coordinator using the `#[RoutePrefix]` attribute.
 
-php suphle route:crud Posts --is_api
-```
+Each method corresponds to a resource action and must return a **Renderer**. Suphle enforces this strictly—raw arrays or iterables are not allowed.
 
-Doing so effectively blocks the view files from being outputted.
+---
 
-## HTTP request methods
+## Standard Route Mapping
 
-The `BaseCollection` class offers the following methods for assigning request methods to our patterns:
+| HTTP Method | Path | Action | Returns |
+| :--- | :--- | :--- | :--- |
+| **GET** | `/posts` | `index` | `Markup` (List) |
+| **GET** | `/posts/create` | `create` | `Markup` (Form) |
+| **POST** | `/posts` | `store` | `Reload` or `Json` |
+| **GET** | `/posts/{id}` | `show` | `Markup` (Detail) |
+| **GET** | `/posts/{id}/edit` | `edit` | `Markup` (Form) |
+| **PUT** | `/posts/{id}` | `update` | `Reload` or `Json` |
+| **DELETE** | `/posts/{id}` | `destroy` | `Json` |
+| **GET** | `/posts/search` | `search` | `Markup` (Results) |
 
-|Assignment method|HTTP method|
-|-----------------|-----------|
-|`_get`			|GET|
-|`_post`			|POST|
-|`_delete`			|DELETE|
-|`_put`			|PUT|
+---
 
-## Presentation formats
+## Example Implementation
 
-These are classes bound to route patterns. After the pattern executes, the result it returns is bound to these classes and they either determine response format received by the user or user's browser behavior. Due to this intricate relationship, all route definitions are incomplete in the absence of a presentation format.
-
-Classes dedicated to presentation formatting are called Renderers and are required to implement the `Suphle\Contracts\Presentation\BaseRenderer` interface. The user's intended experience will influence what renderer is bound to a pattern.
-
-### Customizing response meta
-
-Suphle's renderers all extend from the abstract class, `Suphle\Response\Format\GenericRenderer`, allowing them share functionality for controlling base behavior. These handles are intended for single use. When customization of a renderer's metadata grows recurrent, consider moving it up to the [middleware](/docs/v1/middleware) layer.
-
-#### Changing status code
-
-Except otherwise specified and in special cases such as [handled exceptions](/docs/v1/exceptions#Writing-custom-diffusers), all renderers will respond with status code `200`. To change what code is returned after successful handling of a renderer's action handler, use the `setHeaders` method.
-
-Below, that method causes its renderer to return the given status code:
+A typical generated Coordinator injects dependencies and uses `PayloadStorage` to access request data.
 
 ```php
-	
-public function SALES() {
+#[RoutePrefix(prefix: "posts", mirrorPrefix: "api/v1")]
+class PostCoordinator extends BaseCoordinator {
 
-	$renderer = new Markup("salesHandler", "show-sales");
+    public function __construct(
+        protected readonly PostAccessor $postAccessor,
+        protected readonly PayloadStorage $payloadStorage
+    ) {}
 
-	$renderer->setHeaders(201, []);
-	
-	$this->_httpGet($renderer);
+    #[Route("", HttpMethod::GET)]
+    public function index(): Markup {
+        return new Markup('post.index', [
+            'items' => $this->postAccessor->getAll()
+        ]);
+    }
+
+    #[Route("", HttpMethod::POST)]
+    #[ValidationRules(["title" => "required|string"])]
+    public function store(): Reload {
+        // Retrieve incoming request data
+        $data = $this->payloadStorage->fullPayload();
+
+        // Persist the resource
+        $this->postAccessor->create($data);
+        
+        // Trigger a page reload or redirect
+        return new Reload();
+    }
 }
 ```
 
-#### Setting custom headers
+---
 
-The default renderers will take care of the content types expected of them. These can either be overridden or new headers included in the response using the 2nd argument to the `setHeaders` method.
+## Key Architectural Concepts
+
+### Route Mirroring & Authentication
+
+By defining a `mirrorPrefix`, Suphle automatically exposes the same Coordinator logic under a separate API path.
+
+- **Browser Route:** `/posts`  
+  Typically uses session-based authentication
+
+- **API Route:** `/api/v1/posts`  
+  Automatically switches to token-based authentication (e.g., JWT)
+
+This allows you to maintain a single source of truth for logic while supporting multiple client types.
+
+---
+
+### Payload Handling
+
+Suphle standardizes request data access through **`PayloadStorage`**, replacing older abstractions like `PayloadReader`.
+
+- Acts as the central source of truth for all request input
+- Supports merging, querying, and transformation of payload data
+
+For more complex scenarios (e.g., filtering, searching), use **Payload Builders**:
+
+- Wrap `PayloadStorage`
+- Provide a fluent, domain-specific interface
+- Keep Coordinators thin and focused
+
+---
+
+### Manual Overrides
+
+Although the scaffolding provides defaults, everything is fully customizable through attributes.
+
+You can easily override behavior at the method level:
+
+- **Change HTTP Method**
+  ```php
+  #[Route("", HttpMethod::PATCH)]
+  ```
+
+- **Change Route Path**
+  ```php
+  #[Route("custom-path")]
+  ```
+
+- **Change Response Type**
+  Replace `Reload` with `Redirect`, `Json`, or any custom renderer.
+
+This flexibility ensures the CRUD system is a starting point—not a limitation.
+
+---
+
+## Summary
+
+Suphle’s CRUD system:
+
+1. Automates boilerplate generation
+2. Enforces consistent architectural patterns
+3. Centralizes request handling via `PayloadStorage`
+4. Supports dual-mode (Browser + API) routing through mirroring
+5. Remains fully customizable through attributes
+
+It strikes a balance between **developer productivity** and **architectural clarity**.	
+## Native Renderers
+
+In Suphle, **Renderers** are responsible for transforming the output of a Coordinator method into a final HTTP response. Rather than returning raw arrays or primitives, every action must return a Renderer, ensuring consistency across both browser and API contexts.
+
+All native renderers extend a shared base (`GenericRenderer`) and expose a common method:
+
+- `setHeaders(int $code, array $headers)`
+
+This allows you to override HTTP status codes and headers at the final stage of the response lifecycle.
+
+---
+
+## Redirect
+
+The `Redirect` renderer is used to navigate the user to a different URL. It behaves intelligently depending on the request context, making it one of the few **Mirror-aware** renderers in Suphle.
+
+### Context-Aware Behavior
+
+- **Browser Requests**  
+  Returns a standard `302 Found` redirect.
+
+- **API / JSON Requests**  
+  Returns a `200 OK` response with a JSON payload:
+
+  ```json
+  { "redirect": "/target-url" }
+  ```
+
+This allows frontend clients (e.g., SPAs or mobile apps) to handle navigation manually instead of relying on HTTP redirects.
+
+---
+
+### Dynamic Destinations (Auto-wired Closures)
+
+Instead of passing a static URL, the `Redirect` constructor accepts a `Closure`. This closure is **auto-wired** by the container at runtime.
+
+This means:
+
+- You can type-hint dependencies (services, config, etc.)
+- Suphle will automatically resolve and inject them
+- You can access the Coordinator's result via `$this->rawResponse`
 
 ```php
-
-$renderer->setHeaders(200, [ "X-POWERED-BY" => "Suphle" ]);
-```
-
-### Default renderers
-
-During `GET` requests to non-API-based paths, the Framework stores renderers under PHP's `$_SESSION` superglobal so it can fallback to the last saved renderer in the event of a validation failure while handling a `GET` to `POST` flow.
-
-The following renderers are available. If none of them suits your needs, you can either extend `GenericRenderer`, or implement `BaseRenderer` itself.
-
-#### Json renderer
-
-Perhaps the simplest renderer to make use of the `Suphle\Response\Format\Json` renderer. It receives an iterable payload from action handler and converts it to a JSON string which is eventually flushed to the user.
-
-```php
-
-#[HandlingCoordinator(ApiEntryCoordinator::class)]
-class LowerMirror extends BaseApiCollection {
-
-	public function CASCADE () {
-
-		$this->_httpGet(new Json([]));
-	}
+#[Route("payment/process", HttpMethod::POST)]
+public function processPayment(): Redirect {
+    return new Redirect(function (PaymentGateway $gateway) {
+        // Access result from this method
+        return $gateway->generateUrl(
+            $this->rawResponse["transaction_id"]
+        );
+    });
 }
 ```
 
-#### Markup renderer
+### Important Note on Persistence
 
-The `Suphle\Response\Format\Markup` renderer is the default renderer responsible for binding data to a given HTML template and producing a parsed, valid HTML string for display in browsers. It takes the handler name, the view name, and an optional presentation logic sheet as arguments.
+Since renderers may be serialized internally:
 
-```php
+- Avoid directly capturing non-serializable objects (e.g., PDO, ORM models)
+- Use **curried or nested closures** if needed to defer resolution safely
 
-#[HandlingCoordinator(EntryCoordinator::class)]
-class CarRoutes extends BaseCollection {
-	
-	public function SALES() {
-		
-		$this->_httpGet(new Markup("salesHandler", "show-sales"));
-	}
-}
-```
+---
 
-It's configuration and parser replacement are all treated in greater detail [in its chapter](/docs/v1/templating).
+## Reload
 
-#### Reload renderer
+The `Reload` renderer represents a **smart refresh** of the previous page.
 
-The `Suphle\Response\Format\Reload` renderer causes the browser to reload the originating request. This sort of behavior is usually desirable when the originating request delivered a form and developer wants to display some alert regarding operation's success. You may be familiar with the concept in another framework using the `back` construct.
+Instead of redirecting blindly, it:
 
-Similar to the `Json` renderer, it only accepts the handler as argument, but will return a response with status code `205`.
+1. Retrieves the last `GET` renderer from session storage
+2. Re-executes it
+3. Merges the current action's result into it
 
-```php
-	
-public function SHOW__FORMh () {
-	
-	$this->_httpGet(new Markup("showCreateForm", "show-form"));
-}
+### Key Characteristics
 
-public function PROCESS__FORMh () {
-	
-	$this->_httpGet(new Reload());
-}
-```
-
-`Reload` renderer expects another renderer to have responded to a preceding `GET` request. The renderer is stored on the session in order to circumvent additional routing on this return request. Its handler is then executed, expecting to find request parameters required to make that possible. The raw result of this invocation is then combined with that generated while processing the current one attached to the `Reload` renderer, forming a final payload. Since this renderer's functionality is intrinsic to the session construct, it is applicable only in contexts such as browser-visited routes.
-
-The presentation template of that preceding request is equally borrowed to form a new response.
-
-#### Redirect renderer
-
-The `Suphle\Response\Format\Redirect` renderer is used for endpoints that don't directly return a response after the action handler executes, but rather, usher the browser to another URL either predetermined or dynamically created while handling the request.
-
-When the destination is foreknown, it can simply be returned by the callback given as 2nd argument to the `Redirect` constructor.
+- **Default Status Code:** `200 OK`
+- **State Preservation:** Maintains UI continuity (e.g., success messages after form submission)
 
 ```php
-	
-public function PAYMENT__GATEWAYh () {
-	
-	$this->_httpPost(new Redirect(function () {
-		return "/hello";
-	}));
+#[Route("feedback", HttpMethod::POST)]
+public function handleFeedback(): Reload {
+    $this->service->save(
+        $this->payloadStorage->all()
+    );
+
+    return new Reload();
 }
 ```
 
-However, in most cases, the destination relies on the result or data created while handling the request. When this is the case, the given callback should read action handler response from the `rawResponse` property. Suppose the action handler looks similar to this:
+This is the preferred pattern for handling form submissions in Suphle.
+
+---
+
+## LocalFileDownload
+
+`LocalFileDownload` extends `Redirect` and is designed for **serving files from the local filesystem**.
+
+### Constructor Signature
+
+```
+LocalFileDownload(
+    string $handler,
+    Closure $deriveFilePath,
+    ?Closure $fallbackRedirect
+)
+```
+
+### Behavior
+
+- Dynamically resolves the file path using a closure
+- Streams the file to the user if it exists
+- Gracefully handles missing files via a fallback
+
+### Features
+
+- **Auto-wiring support** in both closures
+- **Graceful failure handling** (optional redirect instead of crash)
 
 ```php
-	
-public function paymentGatewayHook (CartBuilder $cartBuilder):array {
-
-	return [
-
-		"message" => $this->cartService->updateModels($cartBuilder)
-	];
+#[Route("invoice/{id}/download")]
+public function downloadInvoice(int $id): LocalFileDownload {
+    return new LocalFileDownload(
+        "getInvoice",
+        function (ModuleFiles $files) use ($id) {
+            return $files->activeModulePath() .
+                "storage/inv_$id.pdf";
+        },
+        fn () => "/invoices/error"
+    );
 }
 ```
 
-Assuming `updateModels` returns what amount to charge or some other information relevant to the payment provider, the `Redirect` callback will read that data as follows:
+If the file is missing:
+
+- A `404` is triggered
+- User is redirected (if fallback is provided)
+
+---
+
+## Json
+
+The simplest and most direct renderer.
+
+It takes the Coordinator’s output and passes it through `json_encode`.
+
+### Use Case
+
+- API endpoints
+- Lightweight responses
+- Status checks
 
 ```php
-	
-public function PAYMENT__GATEWAYh () {
-	
-	$this->_httpPost(new Redirect(function () {
-		return PaymentProcessor::generateUrl($this->rawResponse["message"]);
-	}));
+#[Route("api/status")]
+public function status(): Json {
+    return new Json([
+        "status" => "online"
+    ]);
 }
 ```
 
-Due to renderers being serialized in session for all non-API-channel requests, if your `rawResponse` property contains active PDO instances such as an ORM model, we will be unable to read it. To get around this limitation, the callback has to be doubly wrapped.
+---
 
-In the example above, the static method of a collaborator, `PaymentProcessor`, was used to generate the next destination URL. Collaborators without a static method i.e. that require an instance, should be type-hinted as arguments to the given callback, and will be auto-wired for you. Putting both caveats together (the assumption of the presence of a PDO instance and auto-wiring), our definition can be modified as follows:
+## Markup
+
+The `Markup` renderer is used for **HTML responses**.
+
+It requires:
+
+- A template path
+- Optional data to be passed into the view
+
+### Use Case
+
+- Server-rendered pages
+- Dashboards
+- Forms and UI views
 
 ```php
-	
-public function PAYMENT__GATEWAYh () {
-	
-	$this->_httpPost(new Redirect(function () {
-		return PaymentProcessor::generateUrl($this->rawResponse["resource"]->id);
-	}));
+#[Route("dashboard")]
+public function dashboard(): Markup {
+    return new Markup("user.dashboard", [
+        "stats" => $this->service->getStats()
+    ]);
 }
 ```
 
-#### Download renderer
+---
 
-Files stored on external servers similar to CDNs should use the `Redirect` renderer, as such service will likely set the appropriate headers to trigger a browser download dialog. However, locally hosted files are advised to be served using the `Suphle\Response\Format\LocalFileDownload` renderer.
+## Customizing Response Metadata
 
-Its signature accepts a handler name, a download path generator, and an optional fallback URL generator.
+Since all renderers inherit from `GenericRenderer`, you can modify the final HTTP response before returning it.
+
+### Example
 
 ```php
-	
-public function GENERATE__PDFh () {
-	
-	$this->_httpPost(new LocalFileDownload("getDailyReport", function (ModuleFiles $fileConfig) {
+#[Route("custom-response")]
+public function custom(): Json {
+    $renderer = new Json([
+        "message" => "Customized"
+    ]);
 
-		return $fileConfig->getModulePath() . "Files/Reports/" .
+    $renderer->setHeaders(
+        202,
+        ["X-Custom-Header" => "Value"]
+    );
 
-		$this->rawResponse["report"]["file_path"];
-	}));
+    return $renderer;
 }
 ```
 
-Being that path generation callback is expected to return dynamic paths, there's every chance that no file actually exists there. If this occurs, the renderer will throw an `Symfony\Component\HttpFoundation\File\Exception\FileException` exception that will be hijacked by the module or app-wide exception handler. However, you may want your users to receive a more graceful response to the file's absence and what to do next. This is the purpose of the 3rd parameter to `LocalFileDownload` -- a minor convenience over wrapping all your callbacks in `file_exists` conditionals, as well as a `404` status code.
+### What You Can Control
+
+- **Status Code** (e.g., `200`, `202`, `404`)
+- **Headers** (custom metadata, caching, etc.)
+
+---
+
+## Summary
+
+Suphle’s Renderer system provides:
+
+1. **Strict response consistency** (no raw outputs)
+2. **Context-aware behavior** (Browser vs API)
+3. **Flexible composition via closures**
+4. **State-aware navigation (`Reload`)**
+5. **Extensibility through shared base class**
+
+Renderers are not just output formatters—they are a core part of Suphle’s request lifecycle and flow orchestration.
+
+## Route Mirroring
+
+**Route Mirroring** allows a Coordinator designed for the browser (HTML) to be automatically exposed as a JSON API. This ensures your application logic remains "Dry" while providing dedicated, versioned paths for API consumers.
+
+Unlike standard content negotiation, Suphle Mirroring creates **dual paths**. This allows you to use different authentication mechanisms and response formats for the same logic without them clashing.
+
+### Activating Mirroring
+
+Mirroring is activated per-Coordinator using the `mirrorPrefix` argument in the `#[RoutePrefix]` attribute.
 
 ```php
-	
-public function GENERATE__PDFh () {
-	
-	$this->_httpPost(new LocalFileDownload("getDailyReport", function (ModuleFiles $fileConfig) {
+use Suphle\Routing\Attributes\{Route, RoutePrefix};
 
-		return $fileConfig->getModulePath() . "Files/Reports/" .
+#[RoutePrefix(
+    prefix: "posts", 
+    mirrorPrefix: "api/v1"
+)]
+class PostCoordinator {
 
-		$this->rawResponse["report"]["file_path"];
-	}, fn () => "/my-reports"));
+    #[Route("")] // Browser: /posts | API: /api/v1/posts
+    public function index(): Markup { ... }
 }
 ```
 
-## Feature toggling
+### Key Differences from Content Negotiation
 
-Whether we're releasing short-lived features or internally demo-ing a permanent one to a subset of the user-base, that which is under review had preferably not leak out to the general public. The standard term for this is canary releases.
+While middleware-based negotiation changes the response based on headers, Suphle Mirroring provides:
 
-A common strategy for implementing them is to read the availability of such feature from its config, an `.env` entry, or a database table. The code-base is then rigged with conditionals constantly consulting any of the feature indicators listed above. Whenever it's present, that block of code is executed. Not only is this highly inefficient, we get to leave dead code behind after feature is toggled off, or hunt the conditional all over the code to get rid of them.
+1. **URL Clarity:** APIs have their own versioned paths (e.g., `/api/v1/...`).
+2. **Security Decoupling:** You can swap a session-based browser authenticator for a token-based API authenticator automatically.
+3. **Automatic Discovery:** The **RouteAnalysisService (RAS)** detects mirrored routes and includes them in API documentation and route lists without extra code.
 
-An more elegant choice would be reading the indicator once, one conditional that when applicable, will branch off to a section of the project entirely in conformity with that feature.
+---
 
-### Canary contextual classes
+## Mirroring and Inheritance
 
-Suphle implements this solution by connecting contextual route collections. These collections are gateways that when evaluated, will determine whether their route collection is eligible to handle the request for that user. They reside in feature folders and point to related service-coordinators, services, events, tests, etc, as a **unit** that can be deleted or moved around without affecting the main/permanent contents of the module.
+Suphle's routing engine fully respects PHP class inheritance. This allows you to version your API by extending existing Coordinators and only overriding what has changed.
 
-Canary contextual classes are required to implement the `Suphle\Contracts\Routing\CanaryGateway` interface.
+### Versioning via Extension
+
+When a child Coordinator extends a parent, the RAS identifies all inherited methods and applies the child's `#[RoutePrefix]` logic to them.
 
 ```php
-interface CanaryGateway {
+// Version 1
+#[RoutePrefix(prefix: "posts", mirrorPrefix: "api/v1")]
+class PostV1 {
+    #[Route("list")]
+    public function list() { ... }
+}
 
-	public function willLoad ():bool;
-
-	public function entryClass ():string;
+// Version 2
+#[RoutePrefix(prefix: "posts", mirrorPrefix: "api/v2")]
+class PostV2 extends PostV1 {
+    // Inherits "list" but exposes it under /api/v2/posts/list
+    
+    #[Route("list")] // Override only if logic changes
+    public function list() { ... } 
 }
 ```
 
-The route collection returned by `entryClass` will be used as a collection prefix if the `willLoad` method evaluates to `true`. Suppose we have special content at `http://example.com/special-foo/same-url` for user with ID 5, his gateway will be written like so:
+### Excluding Methods from Mirrors
+
+If a specific browser-based method (like a complex UI flow) should not be exposed to the API, use the `excludeMethods` argument.
 
 ```php
-
-use Suphle\Contracts\{Routing\CanaryGateway, Auth\AuthStorage};
-
-use AllModules\ModuleOne\Routes\CanaryCollections\CollectionForUser5;
-
-class CanaryForUser5 implements CanaryGateway {
-
-	public function __construct(protected readonly AuthStorage $authStorage) {
-
-		//
-	}
-
-	public function willLoad ():bool {
-
-		return !is_null($this->authStorage->getUser()) &&
-
-		$this->authStorage->getId() == 5;
-	}
-
-	public function entryClass ():string {
-
-		return CollectionForUser5::class;
-	}
+#[RoutePrefix(
+    prefix: "account", 
+    mirrorPrefix: "api/v1", 
+    excludeMethods: ["complexSignupFlow"]
+)]
+class AccountCoordinator {
+    // This will NOT have an /api/v1/account/complex-signup-flow route
+    #[Route("complex-signup-flow")]
+    public function complexSignupFlow() { ... }
 }
 ```
+## Canary Releases (Feature Flags)
 
-```php
+Suphle provides a clean, decoupled mechanism for implementing feature flags, A/B testing, and gradual rollouts. Instead of scattering conditional logic (`if/else`) across your application, Suphle centralizes decision-making into reusable **Canary Evaluators**.
 
-#[HandlingCoordinator(CanaryController::class)]
-class CollectionForUser5 extends BaseCollection {
+---
 
-	public function SAME__URLh () {
+### 1. Defining Canary Evaluators
 
-		$this->_httpGet(new Json([]));
-	}
-}
-```
+A **Canary Evaluator** is a class responsible for determining whether a specific condition is met (for example: user ID ranges, request headers, roles, or IP segments).
 
-As many gateways can define this same route pattern. But internally, they will point to an entirely different suite of collections and coordinators that serve their specific needs.
+To create one, implement:
 
-Not all canary gateways rely on the presence of an authenticated user, as in `CanaryForUser5`. Some could depend on request's IP address, presence of a request parameter or any other quantity. Naturally, authentication is resolved *after* the eventual route is determined, as that is only when one can be certain of that pattern's authentication requirements. In the case of the `CanaryForUser5` gateway however, the default authentication mechanism being bound is the one that will be used.
+`Suphle\Contracts\Routing\CanaryEvaluator`
 
-Ultimately, regular authentication will be evaluated after the full route pattern has been identified. Although it may seem redundant at this point, it also implies that if the final collection reports usage of an authentication mechanism different from that which was used for the gateway, authentication failure will result in request termination, as usual.
+The core method:
 
-### Connecting contextual collections
-
-Their connection is linked using the `BaseCollection::_canaryEntry` method.
-
-```php
-namespace AllModules\ModuleOne\Routes;
-
-use Suphle\Routing\BaseCollection;
-
-use AllModules\ModuleOne\Routes\Canaries\{DefaultCanary, CanaryRequestHasFoo, CanaryForUser5};
-
-class CanaryRoutes extends BaseCollection {
-
-	public function SPECIAL__FOOh () {
-
-		$this->_canaryEntry([
-
-			CanaryForUser5::class, CanaryRequestHasFoo::class,
-
-			DefaultCanary::class
-		]);
-	}
-}
-```
-
-As always, the method pattern must match incoming request before the route parser descends into it. The canary evaluator will cycle through all gateways given for that prefix. The underlying collection of the successful gateway could hold a host of patterns that no other user will be able to access.
-
-While connecting gateways, prepare for the eventuality of the visitor not matching any of the feature gateways, and provide a fallback gateway that will respond with default content/route collection for that pattern.
-
-```php
-
-class DefaultCanary implements CanaryGateway {
-
-	public function willLoad ():bool {
-
-		return true;
-	}
-
-	public function entryClass ():string {
-
-		return DefaultCollection::class;
-	}
-}
-```
-
-Failure to do so will cause the routing component to pretend that route doesn't exist to any visitor who doesn't match any of the given gateways i.e. it will respond with the regular status code `404`, and "Not found" protocols in place.
-
-## Route mirroring
-
-This phenomenon refers to the act of making route collections configured to the [browser channel](#Browser-channel-configuration) equally visible under the [configured API prefix](#API-prefix). When this is activated, the browser collection behaves like a "version-0" of the API -- in other words, it has the following characteristics:
-
-1. Most significantly, all renderers returned by any browser pattern matching incoming request + API prefix, will be converted into `Json` renderers.
-
-1. It acts as a fallback collection for the API collections. Any matching pattern on any of the connected version collections will respond to the incoming request. Otherwise, the routing component will strip the prefix and check for the pattern on the browser collection.
-
-### Route mirroring vs content-negotiation
-
-This sequence described in the introductory section of this topic may sound like the familiar concept of content-negotiation middleware. However, the nature of middleware virtually forces us to lose out on the versioning and browser-side overridding benefits of dedicated API routes i.e. since they can only be determined after computing route segments. If it's satisafactory to simply translate browser collection response types into JSON, you can add the `Suphle\Middleware\Handlers\JsonNegotiator` middleware to the [default list](/docs/v1/middleware#Generic-binding), and it will take care of the rest.
-
-### Activating route mirroring
-
-For it to go into effect, the `Suphle\Contracts\Config\Router::mirrorsCollections` method must return `true`. Its turned off on the default implementation.
-
-```php
-
-class RouterMock extends Router {
-
-	public function browserEntryRoute ():?string {
-
-		return BrowserNoPrefix::class;
-	}
-
-	public function apiStack ():array {
-
-		return [
-			"v2" => ApiUpdate2Entry::class,
-
-			"v1" => LowerMirror::class
-		];
-	}
-
-	public function mirrorsCollections ():bool {
-
-		return true;
-	}
-}
-```
-
-### Authenticating mirrored routes
-
-This is a question of what mechanism should be used to verify authentication status of application visitor when those patterns are inverted into the API prefix. The default value for this configuration on `Suphle\Config\Router` is `Suphle\Auth\Storage\TokenStorage`.
-
-If your API is used by a SPA or if for any other reason, a cookie/session form of authentication is more convenient, the `Suphle\Contracts\Config\Router::mirrorAuthenticator` method can be used to set this config to that.
-
-```php
-
-use Suphle\Auth\Storage\SessionStorage;
-
-use Suphle\Config\Router;
-
-class RouterMock extends Router {
-
-	public function mirrorAuthenticator ():string {
-
-		return SessionStorage::class;
-	}
-}
-```
-
-## Selectively extending route collections
-
-Suppose we want to reuse a route collection from another project but don't want all its route patterns to appear within the present scope, we can't use traits or inheritance since the collection automatically reads all class methods. When possible, the collection should be bundled as a [component template](/docs/v1/component-templates), and customized to taste on the consuming scope.
-
-```
-
-## Canary Routing (Feature Flags)
-
-Suphle supports feature-flagged (canary) routing using a class-level attribute and explicit, on-demand evaluation. This allows you to easily implement A/B tests, gradual rollouts, or user segmentation in your coordinators.
-
-### Defining Canaries
-
-1. **Create canary classes** that implement the `Suphle\Contracts\Routing\CanaryEvaluator` interface, which enforces a `willLoad(): ?string` method. **Inject `Suphle\Contracts\Auth\AuthStorage` to access user information.** Return a string (e.g., 'beta', 'special', 'ab-group-1') if the canary is active for the current request, or `null` if not.
+- `willLoad(): ?string`  
+  - Return a **string slug** if the condition passes  
+  - Return **null** if it fails
 
 ```php
 use Suphle\Contracts\Routing\CanaryEvaluator;
 use Suphle\Contracts\Auth\AuthStorage;
 
-class BetaUserCanary implements CanaryEvaluator
-{
-    public function __construct(protected readonly AuthStorage $authStorage) {}
+class BetaUserCanary implements CanaryEvaluator {
 
-    public function willLoad(): ?string
-    {
+    public function __construct(
+        protected readonly AuthStorage $authStorage
+    ) {}
+
+    public function willLoad(): ?string {
         $userId = $this->authStorage->getId();
+        
+        // Users under ID 1000 are part of the beta rollout
         return ($userId && $userId < 1000) ? 'beta' : null;
-    }
-}
-
-class SpecialUserCanary implements CanaryEvaluator
-{
-    public function __construct(protected readonly AuthStorage $authStorage) {}
-
-    public function willLoad(): ?string
-    {
-        $user = $this->authStorage->getUser();
-        return ($user && $user->isSpecial()) ? 'special' : null;
     }
 }
 ```
 
-**Never use `$_SESSION` or superglobals in canaries—always use `AuthStorage`.**
+> **Best Practice:**  
+> Always inject dependencies like `AuthStorage` or request abstractions. Avoid direct access to globals like `$_SESSION`.
 
-2. **Annotate your coordinator class** with the `CanaryState` attribute, listing all canary classes to check (in order):
+---
+
+### 2. Registering Canaries
+
+Attach evaluators to a **Coordinator class** using the `#[CanaryState]` attribute.
+
+Suphle will evaluate them **in order**, stopping at the first match.
 
 ```php
 use Suphle\Routing\Attributes\CanaryState;
 
-#[CanaryState([BetaUserCanary::class, SpecialUserCanary::class])]
-class UserCoordinator extends BaseCoordinator
-{
-    // ...
+#[CanaryState([
+    BetaUserCanary::class,
+    EarlyAdopterCanary::class
+])]
+class UserCoordinator extends BaseCoordinator {
+    // Coordinator logic...
 }
 ```
 
-### Using the Canary State in Controllers
+---
 
-Inside any action method, call `$this->requestDetails->getCanaryState()` to lazily evaluate the canaries and get the first non-null string (or `null` if none match):
+### 3. Consuming the Canary State
+
+Canary evaluation is **lazy**—it only runs when explicitly requested.
+
+#### In a Coordinator
+
+Use `RequestDetails::getCanaryState()` to retrieve the active state:
 
 ```php
-#[Route('/profile', method: HttpMethod::GET)]
-public function profile(): Json
-{
-    $canary = $this->requestDetails->getCanaryState();
+#[Route('/dashboard')]
+public function dashboard(): Json {
+    $state = $this->requestDetails->getCanaryState();
 
-    return match ($canary) {
-        'beta'    => new Json(['profile' => 'BETA user profile!']),
-        'special' => new Json(['profile' => 'SPECIAL user profile!']),
-        default   => new Json(['profile' => 'STABLE user profile.']),
+    return match ($state) {
+        'beta' => new Json(['layout' => 'v2-experimental']),
+        'early-adopter' => new Json(['layout' => 'v1-with-new-sidebar']),
+        default => new Json(['layout' => 'v1-stable']),
     };
 }
 ```
 
-### Using the Canary State in Templates
+---
 
-The canary state string can be passed to your templates for conditional rendering:
+#### In Templates (Views)
 
-```mustache
-{{#canary_state}}
-  <div class="flag-{{canary_state}}">Special content for {{canary_state}} users!</div>
-{{/canary_state}}
+When returning a `Markup` renderer:
+
+- The resolved state is automatically injected as:
+  
+  `canary_state`
+
+This allows conditional rendering directly in your templates:
+
+```html
+{{#if canary_state == "beta"}}
+    <!-- Show experimental UI -->
+{{/if}}
 ```
-
-### How It Works
-- The canaries are only evaluated when you call `getCanaryState()`.
-- The first canary whose `willLoad()` returns a non-null string is considered active, and that string is returned.
-- If no canary matches, `getCanaryState()` returns `null`.
-- There is no fallback handler; all logic is explicit in your controller or template.
-
-### Benefits
-- **Explicit and flexible**: You control all feature logic in your controller.
-- **No magic method names or fallback coupling**.
-- **Elegant for templates**: Use the canary state string directly in Mustache or other template engines.
-- **No performance penalty**: Canaries are only evaluated if/when you need them.
 
 ---
 
-**Migration note:**
-If you are migrating from v1 or an earlier v2 draft, remove any per-method or controller-level canary/fallback attributes. Use the new class-level `CanaryState` attribute and the `getCanaryState()` method as shown above.
+## Technical Characteristics
+
+### First-Match Wins
+Evaluation stops as soon as one evaluator returns a non-null value. Later evaluators are not executed.
+
+---
+
+### Lazy Evaluation
+If `getCanaryState()` is never called:
+
+- No evaluator runs
+- No performance cost is incurred
+
+---
+
+### Decoupled Logic
+Each evaluator is:
+
+- A standalone class  
+- Fully testable in isolation  
+- Reusable across multiple Coordinators  
+
+---
+
+### No Routing Magic
+
+Unlike earlier approaches:
+
+- Suphle does **not** redirect or reroute requests
+- Canary logic stays **explicit inside your Coordinator methods**
+
+This keeps behavior predictable and easy to debug.
+
+---
+
+## Summary
+
+- **Define logic** in Canary Evaluator classes  
+- **Register evaluators** using `#[CanaryState]`  
+- **Consume state** via `RequestDetails` or templates  
+- **Keep rollout logic centralized and reusable**
+
+This model gives you precise control over feature exposure without compromising code clarity or performance.
 
 ## Route Discovery and Listing
 
@@ -1834,10 +1224,4 @@ When using the `--json` flag, the command outputs structured JSON data:
     "coordinator": "App\\Modules\\User\\Coordinators\\UserCoordinator"
   }
 ]
-```
-
-### Route Detection API
-
-You can also programmatically access route information using the `RouteDetectorService`:
-
 ```

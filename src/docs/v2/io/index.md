@@ -87,8 +87,8 @@ REDIS_PORT = 6379
 We use the `getItem` method to retrieve data stored by a preceding operation, perhaps during an initializing request. However, a second, optional parameter is provided, for more ergonomic use. Rather than checking data availability, deriving from a source on cache miss, and pushing the fresh data into the cache, the sourcing operation should be sent as 2nd argument.
 
 ```php
-
-class BypassExpensive extends UpdatelessService {
+#[DomainService]
+class BypassExpensive {
 
 	public function __construct(
 

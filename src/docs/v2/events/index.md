@@ -32,8 +32,9 @@ class AssignListeners extends EventManager {
 Events can be emitted by calling the `Events::emit` method.
 
 ```php
-
-class CheckoutCart extends UpdatefulService implements SystemModelEdit, VariableDependencies {
+#[VariableDependencies()]
+#[DomainService(mutation: true)]
+class CheckoutCart implements SystemModelEdit {
 
 	use BaseErrorCatcherService;
 
@@ -71,9 +72,10 @@ There is a trait recommended to be combined with the manager during emissions, k
 #[InterceptsCalls(SystemModelEdit::class)]
 #[VariableDependencies([
 
-	"setPayloadStorage", "setPlaceholderStorage"
+	"setPayloadStorage", "setRouteInfo"
 ])]
-class CheckoutCart extends UpdatefulService implements SystemModelEdit {
+#[DomainService(mutation: true)]
+class CheckoutCart implements SystemModelEdit {
 
 	use BaseErrorCatcherService, EmitProxy;
 
@@ -236,8 +238,8 @@ We know how to emit and react to events, but there a few additional points to be
 The handlers are fired in the order the modules are being stacked. This could result in actions dependent on completion of prior activities, having to rely on a brittle arrangement. In such cases, rather than all interested parties listening to an event from the originating emitter, it would be more robust for the preceding listener to emit its own event onto the stack for direct dependents to listen to. In practice, that would split the main event into sub-events representing each dependent step:
 
 ```php
-
-class SplitEventService extends UpdatelessService {
+#[DomainService]
+class SplitEventService {
 
 	use EmitProxy;
 
@@ -255,8 +257,8 @@ class SplitEventService extends UpdatelessService {
 		$this->emitHelper (self::CASCADE_BEGIN_EVENT, $payload);
 	}
 }
-
-class MediatingReceptor extends UpdatelessService {
+#[DomainService]
+class MediatingReceptor {
 
 	use EmitProxy;
 

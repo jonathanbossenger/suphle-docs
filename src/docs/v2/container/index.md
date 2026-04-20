@@ -37,7 +37,7 @@ class ModuleOneDescriptor extends ModuleDescriptor {
 }
 ```
 
-While it would've been considered elegant for these provisions to be bound using attributes, that pattern has the disadvantage of requiring a project scan for auto-binding, as well as limitation posed to discoverability.
+While it would've been considered elegant for these provisions to be bound using attributes, that pattern has the disadvantage of discoverability for auto-binding.
 
 The default implementation of the `InterfaceCollection` is `Suphle\Hydration\Structures\BaseInterfaceCollection` -- more of an indispensable class than a replaceable one -- from which you're expected to extend. `InterfaceCollection` exposes methods that describe what kind of interface it is being provided. They all return key-value arrays pairing the interface to the name of a concrete implementation. At the very least, the interface collection of [a module involved in routing](/docs/v1/modules#Connecting-standalone-modules) will have a semblance to that below:
 

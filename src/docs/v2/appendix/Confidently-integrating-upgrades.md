@@ -84,8 +84,8 @@ $someResult = $service->doXToProduct($builtProduct);
 ```
 
 ```php
-
-class BusinessService extends UpdatefulService {
+#[DomainService(mutation: true)]
+class BusinessService {
 
 	public function __construct (protected readonly XBusiness $xBusiness) {
 
@@ -127,8 +127,8 @@ else $someResult = $service->doYToProduct($builtProduct);
 ```
 
 ```php
-
-class BusinessService extends UpdatefulService {
+#[DomainService(mutation: true)]
+class BusinessService {
 
 	public function __construct (
 		protected readonly XBusiness $xBusiness, 

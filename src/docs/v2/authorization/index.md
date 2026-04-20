@@ -162,148 +162,133 @@ Permissions aren't contagious -- those relationships must be protected on their 
 
 You may have noted that our `retrieved` method in the model-based authorizer simply returned `true`, which would imply everyone can view instances of this resource. In the real world, this isn't always desirable. We want to limit contextual access to our models; that is, while it may be okay to list available `Employment`s, we only want those with sufficient authority to retrieve them within the scope where updates to them can be made; for example, to their edit page. We still retrieve `Employment`s here but since the concept of pages doesn't exist on the DAL, we use route-based authorization to achieve our goal. Furthermore, it is applicable to pages not strictly offering priviliged access to database models, such as an administrative dashboard, pages displaying an interface to create sub-resources, etc. Any mutative endpoint is a ripe candidate for a series of authorization impositions.
 
-### Tagging route authorization
+### Tagging Route Authorization
 
-This form of authorization is achieved by overriding the `Suphle\Contracts\Routing\RouteCollection::_preMiddleware` method with a binding to the `Suphle\Auth\RequestScrutinizers\AuthorizeMetaFunnel` collector.
+Route authorization is achieved by applying the `#[PreMiddleware]` attribute with the `AuthorizeMetaFunnel` to Coordinator methods or classes. Unlike authentication, which simply identifies a user, authorization evaluates specific **Route Rules** to determine if the identified user is permitted to access a resource.
 
-`Suphle\Routing\BaseCollection` defines an empty implementation of the `_preMiddleware` method, meaning that when absent, it is assumed that no route pattern on this collection is authorized unless it's used as a sub-collection of one bound to the `AuthorizeMetaFunnel` collector.
+## Route Rule Classes
 
-The binding to this collector accepts a list of patterns and a rule class to evaluate. Path authorization rule classes are extensions of the base `Suphle\Request\RouteRule`.
-
-Suppose we want to authorize access to route patterns on a collection `AuthorizeRoutes`, they will be bound as follows:
+Path authorization rules are dedicated classes that implement the `permit()` method. These classes have full access to the DI container, allowing them to inject services like `AuthStorage` to check user roles or `RouteInfo` to retrieve ID segments from the URL.
 
 ```php
+namespace App\Authorization\Rules;
 
-use Suphle\Routing\{BaseCollection, PreMiddlewareRegistry, Decorators\HandlingCoordinator};
-
-use Suphle\Auth\RequestScrutinizers\AuthorizeMetaFunnel;
-
-use Suphle\Response\Format\Json;
-
-use Suphle\Tests\Mocks\Modules\ModuleOne\{Controllers\BaseCoordinator, Authorization\Paths\AdminRule};
-
-#[HandlingCoordinator(BaseCoordinator::class)]
-class AuthorizeRoutes extends BaseCollection {
-
-	public function ADMIN__ENTRYh () {
-
-		$this->_httpGet(new Json("plainSegment"));
-	}
-
-	public function ADMIN () {
-
-		$this->_prefixFor(UnlocksAuthorization1::class);
-	}
-
-	public function _preMiddleware (PreMiddlewareRegistry $registry):void {
-
-		$registry->tagPatterns(
-
-			new AuthorizeMetaFunnel([ "ADMIN__ENTRYh", "ADMIN"], AdminRule::class)
-		);
-	}
-}
-```
-
-Meanwhile, `AdminRule` will look like this:
-
-```php
 use Suphle\Request\RouteRule;
 
 class AdminRule extends RouteRule {
 
-	public function permit ():bool {
+    public function permit(): bool {
 
-		return $this->authStorage->getUser()->isAdmin();
-	}
+        return $this->authStorage->getUser()->isAdmin();
+    }
 }
 ```
 
-The above tag will prohibit access to all routes matching `/admin-entry`, as well as sub-patterns under `/admin/*` for users who aren't admins.
+## Applying Authorization Rules
 
-### Detaching parent route authorization
-
-The `PreMiddlewareRegistry::removeTag` method is used to exclude route sub-patterns from inherited collector bindings. For instance, suppose we want disconnect some patterns on the `UnlocksAuthorization1` nested collection, we'll override its `_preMiddleware` method as follows:
+Suppose we want to restrict access to an admin dashboard. We apply the funnel directly to the Coordinator. This prohibits access to the mapped routes for any user who does not satisfy the `AdminRule`.
 
 ```php
+namespace App\Coordinators;
 
-#[HandlingCoordinator(EmploymentEditCoordinator::class)]
-class UnlocksAuthorization1 extends BaseCollection {
+use Suphle\Routing\Attributes\{RoutePrefix, HttpGet, PreMiddleware};
+use Suphle\Auth\RequestScrutinizers\AuthorizeMetaFunnel;
+use App\Authorization\Rules\AdminRule;
+use Suphle\Response\Format\Json;
 
-	public function SECEDE () {
+#[RoutePrefix(prefix: "admin")]
+#[PreMiddleware(AuthorizeMetaFunnel::class, ["ruleClass" => AdminRule::class])]
+class AdminCoordinator {
 
-		$this->_httpGet(new Json("simpleResult"));
-	}
+    #[HttpGet("entry")]
+    public function getEntry(): Json {
 
-	public function GMULTI__EDITh_id () {
-
-		$this->_httpGet(new Json("getEmploymentDetails"));
-	}
-
-	public function GMULTI__EDIT__UNAUTHh () {
-
-		$this->_httpGet(new Json("getEmploymentDetails"));
-	}
-
-	public function _preMiddleware (PreMiddlewareRegistry $registry):void {
-
-		$registry->tagPatterns(
-
-			new AuthorizeMetaFunnel(
-
-				[ "GMULTI__EDITh_id"], EmploymentEditRule::class
-			)
-		)->removeTag(
-
-			["SECEDE", "GMULTI__EDIT__UNAUTHh" ],
-
-			AuthorizeMetaFunnel::class, function (AuthorizeMetaFunnel $collector) {
-
-				return $collector->ruleClass == AdminRule::class;
-			})
-		);
-	}
+        return new Json([
+            "message" => "Welcome to the Admin Panel"
+        ]);
+    }
 }
 ```
 
-We distill through authorization declarations for the one bound to `AdminRule` rule.
+## Detaching Parent Route Authorization
 
-### Combining with inherited path rules
-
-Within `UnlocksAuthorization1::_preMiddleware`, an additional authorization rule is applied to the `GMULTI__EDITh_id` pattern, which already has the `AdminRule` inherited from the parent collection. The `EmploymentEditRule` authorization rule will never run if `AdminRule` fails, so there's no need to combine the logic manually in the rule class.
-
-`EmploymentEditRule` is a model-based authorization, meaning that where necessary, there's no problem with combining both.
+In an attribute-driven architecture, class-level middleware is inherited by all methods. To exclude specific sub-routes from inherited authorization, the `#[ClearMiddleware]` attribute is used. This allows you to "secede" from the overarching security policy.
 
 ```php
+#[RoutePrefix(prefix: "employment")]
+#[PreMiddleware(AuthorizeMetaFunnel::class, ["ruleClass" => AdminRule::class])]
+class EmploymentCoordinator {
+
+    #[HttpGet("public-list")]
+    #[ClearMiddleware(AuthorizeMetaFunnel::class)]
+    public function getPublicList(): Json {
+
+        return new Json([
+            "data" => "Public job postings"
+        ]);
+    }
+
+    #[HttpGet("edit/{id}")]
+    public function editEmployment(int $id): Json {
+
+        return new Json([
+            "data" => "Editing employment record $id"
+        ]);
+    }
+}
+```
+
+In the example above, `getPublicList` is accessible to everyone, while `editEmployment` remains restricted to administrators.
+
+## Combining Authorization Rules
+
+Authorization rules are additive. When multiple `AuthorizeMetaFunnel` attributes are present (either through inheritance or by stacking them on a single method), Suphle executes them in sequence. A localized rule will only run if the inherited class-level rules have already passed.
+
+Model-based authorization often requires checking the owner of a specific resource. Because `RouteInfo` are populated before the rules run, you can easily retrieve URL parameters like `{id}` within the rule.
+
+```php
+namespace App\Authorization\Rules;
+
+use Suphle\Request\RouteRule;
+use Suphle\Auth\Contracts\AuthStorage;
+use Suphle\Routing\Structures\RouteInfo;
+use App\Models\Employment;
+
 class EmploymentEditRule extends RouteRule {
 
-	public function __construct (
-		AuthStorage $authStorage,
+    public function __construct (
+        AuthStorage $authStorage,
+        protected readonly Employment $model,
+        protected readonly RouteInfo $routeInfo
+    ) {
+        parent::__construct($authStorage);
+    }
 
-		protected readonly Employment $model,
+    public function permit(): bool {
 
-		protected readonly PathPlaceholders $pathPlaceholders
-	) {
+        return $this->authStorage->getId() === $this->getCreatorId();
+    }
 
-		parent::__construct($authStorage);
-	}
+    protected function getCreatorId(): int {
 
-	public function permit ():bool {
-
-		return $this->authStorage->getId() == $this->getCreatorId();
-	}
-
-	protected function getCreatorId ():int {
-
-		return $this->model->find(
-		
-			$this->pathPlaceholders->getSegmentValue("id")
-		)->employer->user_id;
-	}
+        return $this->model->find(
+            $this->routeInfo->getSegmentValue("id")
+        )->employer->user_id;
+    }
 }
 ```
 
-The combination of both authorization rules above will reduce `/admin/gmulti-edit/1603` accessibility to only admins AND the resource's creator.
+By stacking this on the coordinator method, you can combine logic seamlessly:
+
+```php
+#[PreMiddleware(AuthorizeMetaFunnel::class, ["ruleClass" => EmploymentEditRule::class])]
+public function updateEmployment(int $id): Json {
+
+    return new Json(["message" => "Update successful"]);
+}
+```
+
+If this method is inside the `AdminCoordinator` from the previous section, the resulting access requirement for `/admin/employment/update/1603` is reduced to users who are both **Admins** AND the **Creator** of the resource.
 
 ## Testing authorization
 

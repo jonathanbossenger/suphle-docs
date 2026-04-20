@@ -22,14 +22,15 @@ class ImagePayloadReader extends ImagefulPayload {
 		);
 	}
 }
-
-class ImageUploadCoordinator extends ServiceCoordinator {
+#[RoutePrefix("/image")]
+class ImageUploadCoordinator extends BaseCoordinator {
 
 	#[ValidationRules([
 		"belonging_resource" => "required|string",
 
 		"profile_pic" => "required|image"
 	])]
+	#[Route("/thumb", HttpMethod::POST)]
 	public function applyThumbnail (ImagePayloadReader $payload):array {
 
 		return $payload->getDomainObject()->thumbnail(50, 50)
@@ -391,8 +392,8 @@ This assertion and its complementary, `assertSavedFileNames`, are simply used fo
 Since image name generation is delegated to other collaborators, testers can either mock out optimizer manager, or even better, make verifications using a wildcard format. In practise, that would look like:
 
 ```php
-
-class ProductImageService extends UpdatelessService {
+#[DomainService]
+class ProductImageService {
 
 	public function __construct (protected readonly ImagePayloadReader $reader) {
 

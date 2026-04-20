@@ -49,7 +49,7 @@ It can then be consumed in a `getFromApi` coordinator handler as follows:
 
 ```php
 
-class HttpCoordinator extends ServiceCoordinator {
+class HttpCoordinator extends BaseCoordinator {
 
 	public function __construct (protected readonly VisitSegment $httpService) {
 
