@@ -279,7 +279,7 @@ Turbo tag targets are necessary since incoming element needs a way to reference 
 
 ```php
 
-class FormHandlingCoordinator extends ServiceCoordinator {
+class FormHandlingCoordinator extends BaseCoordinator {
 
 	public function hotwireReplace (BaseProductBuilder $builtProduct):iterable {
 

@@ -433,7 +433,7 @@ The `getCoordinatorClassesToScan()` method allows filtering which coordinator cl
 
 #### Retrieving pattern segments
 
-The essence of dynamic segments is placeholders planted to represent values unknown at compile-time. The values are subject to each incoming request and are collected [before even hitting](/docs/v1/service-coordinators#Builder-selects) the coordinator. At that layer, the `Suphle\Routing\Structures\RouteInfo::getSegmentValue` method is used to read the given dynamic segment.
+The essence of dynamic segments is placeholders planted to represent values unknown at compile-time. The values are subject to each incoming request and are collected [before even hitting](/docs/v2/service-coordinators#Builder-selects) the coordinator. At that layer, the `Suphle\Routing\Structures\RouteInfo::getSegmentValue` method is used to read the given dynamic segment.
 
 Given our `MusicRoutes` collection above, the `id` segment of the request to `http://example.com/44` can be fetched like so:
 
@@ -451,7 +451,7 @@ class BaseProductBuilder extends ModelfulPayload {
 }
 ```
 
-Note that a more complete implementation of this class is listed in [its relevant chapter](/docs/v1/service-coordinators#Builder-selects).
+Note that a more complete implementation of this class is listed in [its relevant chapter](/docs/v2/service-coordinators#Builder-selects).
 
 `getSegmentValue` has a more liberal cousin called `getAllSegmentValues`, that returns all segments in one go.
 
@@ -478,7 +478,7 @@ protected function getBaseCriteria ():object {
 
 	return $this->blankProduct->where([
 
-		"id" => $this->routeInfo->getKeyForPositiveInt("id")
+		"id" => $this->payloadStorage->getKeyForPositiveInt("amount")
 	]);
 }
 ```
@@ -529,8 +529,6 @@ Running this command generates all the foundational components required to manag
 
 ## Scaffolding Output
 
-Internally, the `ResourceBootstrapper` handles file generation by cloning predefined templates into your module.
-
 The following components are created:
 
 1. **Coordinator**  
@@ -580,43 +578,6 @@ Each method corresponds to a resource action and must return a **Renderer**. Sup
 
 ---
 
-## Example Implementation
-
-A typical generated Coordinator injects dependencies and uses `PayloadStorage` to access request data.
-
-```php
-#[RoutePrefix(prefix: "posts", mirrorPrefix: "api/v1")]
-class PostCoordinator extends BaseCoordinator {
-
-    public function __construct(
-        protected readonly PostAccessor $postAccessor,
-        protected readonly PayloadStorage $payloadStorage
-    ) {}
-
-    #[Route("", HttpMethod::GET)]
-    public function index(): Markup {
-        return new Markup('post.index', [
-            'items' => $this->postAccessor->getAll()
-        ]);
-    }
-
-    #[Route("", HttpMethod::POST)]
-    #[ValidationRules(["title" => "required|string"])]
-    public function store(): Reload {
-        // Retrieve incoming request data
-        $data = $this->payloadStorage->fullPayload();
-
-        // Persist the resource
-        $this->postAccessor->create($data);
-        
-        // Trigger a page reload or redirect
-        return new Reload();
-    }
-}
-```
-
----
-
 ## Key Architectural Concepts
 
 ### Route Mirroring & Authentication
@@ -635,49 +596,20 @@ This allows you to maintain a single source of truth for logic while supporting 
 
 ### Payload Handling
 
-Suphle standardizes request data access through **`PayloadStorage`**, replacing older abstractions like `PayloadReader`.
+Suphle standardizes request data access through **Payload Builders**:
 
-- Acts as the central source of truth for all request input
-- Supports merging, querying, and transformation of payload data
-
-For more complex scenarios (e.g., filtering, searching), use **Payload Builders**:
-
-- Wrap `PayloadStorage`
 - Provide a fluent, domain-specific interface
 - Keep Coordinators thin and focused
 
----
-
-### Manual Overrides
-
-Although the scaffolding provides defaults, everything is fully customizable through attributes.
-
-You can easily override behavior at the method level:
-
-- **Change HTTP Method**
-  ```php
-  #[Route("", HttpMethod::PATCH)]
-  ```
-
-- **Change Route Path**
-  ```php
-  #[Route("custom-path")]
-  ```
-
-- **Change Response Type**
-  Replace `Reload` with `Redirect`, `Json`, or any custom renderer.
-
-This flexibility ensures the CRUD system is a starting point—not a limitation.
+It wraps `PayloadStorage` which acts as the central source of truth for all request input and supports merging, querying, and transformation of payload data
 
 ---
-
-## Summary
 
 Suphle’s CRUD system:
 
 1. Automates boilerplate generation
 2. Enforces consistent architectural patterns
-3. Centralizes request handling via `PayloadStorage`
+3. Centralizes request handling via **Payload Builders**
 4. Supports dual-mode (Browser + API) routing through mirroring
 5. Remains fully customizable through attributes
 
@@ -783,7 +715,6 @@ This is the preferred pattern for handling form submissions in Suphle.
 
 ```
 LocalFileDownload(
-    string $handler,
     Closure $deriveFilePath,
     ?Closure $fallbackRedirect
 )
@@ -804,7 +735,6 @@ LocalFileDownload(
 #[Route("invoice/{id}/download")]
 public function downloadInvoice(int $id): LocalFileDownload {
     return new LocalFileDownload(
-        "getInvoice",
         function (ModuleFiles $files) use ($id) {
             return $files->activeModulePath() .
                 "storage/inv_$id.pdf";
@@ -1099,42 +1029,15 @@ Evaluation stops as soon as one evaluator returns a non-null value. Later evalua
 
 ---
 
-### Lazy Evaluation
-If `getCanaryState()` is never called:
-
-- No evaluator runs
-- No performance cost is incurred
-
----
-
 ### Decoupled Logic
 Each evaluator is:
 
 - A standalone class  
 - Fully testable in isolation  
-- Reusable across multiple Coordinators  
-
----
-
-### No Routing Magic
-
-Unlike earlier approaches:
-
-- Suphle does **not** redirect or reroute requests
+- Reusable across multiple Coordinators
 - Canary logic stays **explicit inside your Coordinator methods**
 
-This keeps behavior predictable and easy to debug.
-
----
-
-## Summary
-
-- **Define logic** in Canary Evaluator classes  
-- **Register evaluators** using `#[CanaryState]`  
-- **Consume state** via `RequestDetails` or templates  
-- **Keep rollout logic centralized and reusable**
-
-This model gives you precise control over feature exposure without compromising code clarity or performance.
+This keeps behavior predictable and easy to debug. This model gives you precise control over feature exposure without compromising code clarity or performance.
 
 ## Route Discovery and Listing
 
@@ -1225,3 +1128,52 @@ When using the `--json` flag, the command outputs structured JSON data:
   }
 ]
 ```
+---
+## API Documentation Component
+
+This component provides automatic OpenAPI documentation generation for Suphle applications. It scans all routes and generates comprehensive API documentation with request/response schemas, validation rules, and authentication requirements. It features the following:
+
+- **Automatic Route Discovery**: Scans all registered routes and extracts metadata
+- **OpenAPI 3.0 Specification**: Generates standards-compliant OpenAPI documentation
+- **Response Schema Analysis**: Uses Psalm static analysis to infer response schemas
+- **Validation Rule Integration**: Converts Laravel-style validation rules to OpenAPI schemas
+- **Authentication Documentation**: Automatically detects and documents auth barriers
+- **Component Template**: Plug-and-play installation without manual configuration
+
+### Installation
+
+Install the component template:
+
+```bash
+## 
+php suphle component:install ApiDocsTemplates
+```
+
+The routes will be available at:
+- /api-docs (HTML documentation)
+- /api-docs/json (OpenAPI JSON specification)
+
+### Usage
+
+#### HTML Documentation
+
+Visit `/api-docs` to view the interactive HTML documentation with:
+- Route summaries and descriptions
+- Request/response examples
+- Try-it-out functionality
+- Authentication information
+
+#### JSON Specification
+
+Visit `/api-docs/json` to get the raw OpenAPI 3.0 specification for:
+- Integration with external tools (Swagger UI, Postman, etc.)
+- API client generation
+- Documentation hosting
+
+### Integration with External Tools
+
+#### Postman
+
+1. Import the OpenAPI specification from `/api-docs/json`
+2. Postman will automatically generate a collection with all your endpoints
+3. Authentication and request bodies will be pre-configured

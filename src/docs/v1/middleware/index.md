@@ -57,7 +57,7 @@ use Suphle\Response\Format\Markup;
 
 use Suphle\Middleware\MiddlewareRegistry;
 
-use Suphle\Tests\Mocks\Modules\ModuleOne\{Coordinators\BaseCoordinator, Middlewares\Collectors\ActorsMiddlewareFunnel};
+use Suphle\Tests\Mocks\Modules\ModuleOne\{Services\BaseCoordinator, Middlewares\Collectors\ActorsMiddlewareFunnel};
 
 #[HandlingCoordinator(BaseCoordinator::class)]
 class MultiTagSamePattern extends BaseCollection {
@@ -183,7 +183,7 @@ class SomeGenericMiddleware implements Middleware {
 }
 ```
 
-In its current state, `SomeGenericMiddleware` is redundant. For it to have any meaning, it has to collaborate with other dependencies to decide whether, or what side-effect to apply to incoming request flow. Often, these dependencies comprise of `PayloadStorage` or `PathPlaceholders`.
+In its current state, `SomeGenericMiddleware` is redundant. For it to have any meaning, it has to collaborate with other dependencies to decide whether, or what side-effect to apply to incoming request flow. Often, these dependencies comprise of `PayloadStorage` or `RouteInfo`.
 
 ```php
 

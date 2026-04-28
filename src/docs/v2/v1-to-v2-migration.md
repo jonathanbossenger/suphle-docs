@@ -23,7 +23,7 @@ class UserRoutes extends BaseCollection
 }
 
 // AllModules/Users/Coordinators/UserCoordinator.php
-class UserCoordinator extends ServiceCoordinator
+class UserCoordinator extends BaseCoordinator
 {
     public function listUsers() { return ['users' => [...]]; }
     public function showUser()  { $id = ...; return ['user' => [...]]; }
@@ -34,7 +34,7 @@ class UserCoordinator extends ServiceCoordinator
 ```php
 // AllModules/Users/Coordinators/UserCoordinator.php
 #[RoutePrefix("users")]
-class UserCoordinator extends ServiceCoordinator
+class UserCoordinator extends BaseCoordinator
 {
     #[Route("/", HttpMethod::GET)]
     public function listUsers(): Markup
@@ -46,7 +46,7 @@ class UserCoordinator extends ServiceCoordinator
     public function showUser(): Markup
     {
         return new Markup('users.show', ['user' => $this->userService->find(
-            $this->pathPlaceholders->getSegmentValue("id")
+            $this->routeInfo->getSegmentValue("id")
         )]);
     }
 }
@@ -78,7 +78,7 @@ public function BETA() {
 **v2 (Explicit evaluation via match):**
 ```php
 #[CanaryState([BetaUserCanary::class])]
-class FeatureCoordinator extends ServiceCoordinator
+class FeatureCoordinator extends BaseCoordinator
 {
     #[Route("beta", HttpMethod::GET)]
     public function betaFeature(): Markup

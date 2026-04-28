@@ -567,7 +567,7 @@ use Suphle\Events\EmitProxy;
 #[InterceptsCalls(SystemModelEdit::class)]
 #[VariableDependencies([
 
-	"setPayloadStorage", "setPlaceholderStorage"
+	"setPayloadStorage", "setRouteInfo"
 ])]
 class CheckoutCart extends UpdatefulService implements SystemModelEdit {
 
@@ -652,7 +652,7 @@ use Suphle\Tests\Mocks\Models\Eloquent\Employment;
 #[InterceptsCalls(MultiUserModelEdit::class)]
 #[VariableDependencies([
 
-	"setPayloadStorage", "setPlaceholderStorage"
+	"setPayloadStorage", "setRouteInfo"
 ])]
 class EmploymentEditMock extends UpdatefulService implements MultiUserModelEdit {
 

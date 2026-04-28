@@ -46,7 +46,7 @@ Suppose our coordinator returns the following payload:
 
 ```php
 
-class CatalogCoordinator extends ServiceCoordinator {
+class CatalogCoordinator extends BaseCoordinator {
 
 	/**
 	 * @return Books[]
@@ -141,11 +141,11 @@ $flow->linksTo("books/id", $flow->previousResponse()
 );
 ```
 
-This will cause the name of each book to be forwarded to "books/id". Operations under this category will populate `Suphle\Routing\PathPlaceholders` for subsequent requests, on a matching key.
+This will cause the name of each book to be forwarded to "books/id". Operations under this category will populate `Suphle\Routing\Structures\RouteInfo` for subsequent requests, on a matching key.
 
 ```php
 
-$this->pathPlaceholders->getSegmentValue("name");
+$this->routeInfo->getSegmentValue("name");
 ```
 Where absent, this argument will fallback to the "id" property.
 
@@ -175,13 +175,13 @@ $flow->linksTo("special-books", $flow->previousResponse()
 );
 ```
 
-Doing so would populate `Suphle\Routing\PathPlaceholders` with a pluralized version of the property. Thus, where the previous dataset allowed us extract IDs, the "special-books" endpoint will receive an "ids" key in its `PathPlaceholders`. The model builder in that subsequent request can then do,
+Doing so would populate `Suphle\Routing\Structures\RouteInfo` with a pluralized version of the property. Thus, where the previous dataset allowed us extract IDs, the "special-books" endpoint will receive an "ids" key in its `RouteInfo`. The model builder in that subsequent request can then do,
 
 ```php
 
 return $this->blankModel->whereIn(explode(
 
-	$this->pathPlaceholders->getSegmentValue("ids")
+	$this->routeInfo->getSegmentValue("ids")
 ));
 ```
 
@@ -199,7 +199,7 @@ $flow->linksTo("isbn/between", $flow->previousResponse()
 );
 ```
 
-The `pathPlaceholders` would contain the keys "min" and "max" each pointing to their respective values from the preceding payload. Where this is not desired, key names can be customized using `Suphle\Flows\Structures\RangeContext` object like so,
+The `routeInfo` would contain the keys "min" and "max" each pointing to their respective values from the preceding payload. Where this is not desired, key names can be customized using `Suphle\Flows\Structures\RangeContext` object like so,
 
 ```php
 

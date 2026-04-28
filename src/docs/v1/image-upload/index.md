@@ -23,7 +23,7 @@ class ImagePayloadReader extends ImagefulPayload {
 	}
 }
 
-class ImageUploadCoordinator extends ServiceCoordinator {
+class ImageUploadCoordinator extends BaseCoordinator {
 
 	#[ValidationRules([
 		"belonging_resource" => "required|string",

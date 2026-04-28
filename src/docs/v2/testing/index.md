@@ -11,7 +11,7 @@ All bootstrapping necessary to create conducive environment for the various [tes
 phpunit "/project/path/tests"
 ```
 
-A directory path is given above but a file can equally be provided. The command can optionally filter executed tests [to a specific one](/docs/v1/appendix/Building-blocks-of-the-testing-chain#Combining-event-induction-and-observation), or selectively executes [test suites](https://docs.phpunit.de/en/10.0/textui.html#selection).
+A directory path is given above but a file can equally be provided. The command can optionally filter executed tests [to a specific one](/docs/v2/appendix/Building-blocks-of-the-testing-chain#Combining-event-induction-and-observation), or selectively executes [test suites](https://docs.phpunit.de/en/10.0/textui.html#selection).
 
 ### Executing tests in parallel
 
@@ -57,7 +57,7 @@ This workaround is only necessary if you have multiple file-system based tests a
 
 #### Parallel testing the database
 
-No additional work is needed on your part to make the database suitable for parallel testing. The default [database configuration](/docs/v1/database#Configuring-the-database) checks for the presence of the parallel indicator, and adjusts its value accordingly.
+No additional work is needed on your part to make the database suitable for parallel testing. The default [database configuration](/docs/v2/database#Configuring-the-database) checks for the presence of the parallel indicator, and adjusts its value accordingly.
 
 ## Base test types
 
@@ -65,11 +65,11 @@ These are low-level test types which most of your tests are expected to extend i
 
 |Test-type|Environment|
 |---------|-----------|
-|`Suphle\Testing\TestType\CommandLineTest`|[The command console](/docs/v1/console#Testing-commands)|
-|`Suphle\Testing\TestType\InstallComponentTest`|[Component templates installation](/docs/v1/component-templates#Testing-component-installation)|
-|`Suphle\Testing\TestType\InvestigateSystemCrash`|[System involuntary shutdown](/docs/v1/exceptions#Specific-exception-testing)|
+|`Suphle\Testing\TestType\CommandLineTest`|[The command console](/docs/v2/console#Testing-commands)|
+|`Suphle\Testing\TestType\InstallComponentTest`|[Component templates installation](/docs/v2/component-templates#Testing-component-installation)|
+|`Suphle\Testing\TestType\InvestigateSystemCrash`|[System involuntary shutdown](/docs/v2/exceptions#Specific-exception-testing)|
 |`Suphle\Testing\TestType\IsolatedComponentTest`|[Only one Container required](#Hydrating-single-SUTs)|
-|`Suphle\Testing\TestType\ModuleLevelTest`|[Natural modular habitat](/docs/v1/modules#Testing-modules)|
+|`Suphle\Testing\TestType\ModuleLevelTest`|[Natural modular habitat](/docs/v2/modules#Testing-modules)|
 
 Although it's extremely unlikely, if functionality you wish to test doesn't fall into any of those categories, it's unnecessary to extend them. Instead, configure the `PHPUnit\Framework\TestCase` class itself match your target constraints.
 
@@ -77,7 +77,7 @@ Each of the test-types is treated at length in their respective chapters. Before
 
 ## Hydrating single SUTs
 
-Not to be confused with [Component templates](/docs/v1/component-templates), the `IsolatedComponentTest` intended target is simple integration tests and unit tests. Suppose we want to test an object with dependencies injected through its constructor, this test type offers a booted Container to be used for hydrating any of those collaborators that shouldn't be mocked i.e. isolating that one entity from its surroundings.
+Not to be confused with [Component templates](/docs/v2/component-templates), the `IsolatedComponentTest` intended target is simple integration tests and unit tests. Suppose we want to test an object with dependencies injected through its constructor, this test type offers a booted Container to be used for hydrating any of those collaborators that shouldn't be mocked i.e. isolating that one entity from its surroundings.
 
 In a nutshell, an object is pulled out of the Container, an action performed against that instance and its result verified:
 
@@ -135,7 +135,7 @@ Internally, the interfaces supplied through `simpleBinds` are hydrated and bound
 
 The fact that its Container is capable of hydrating dependencies shouldn't deter any necessary mocks from being bound.
 
-1. This test type makes no guarantees regarding exception catching and [broadcasting prevention](/docs/v1/exceptions#Broadcasting-exception-details). Doing so requires events, which must be initialized by binding listeners on its module. Attempting to combine it with components that interact with events will terminate outright, except an accompanying module descriptor is bound. In such cases, it's simply better to use a `ModuleLevelTest`.
+1. This test type makes no guarantees regarding exception catching and [broadcasting prevention](/docs/v2/exceptions#Broadcasting-exception-details). Doing so requires events, which must be initialized by binding listeners on its module. Attempting to combine it with components that interact with events will terminate outright, except an accompanying module descriptor is bound. In such cases, it's simply better to use a `ModuleLevelTest`.
 
 ### Disabling single Container decorator
 
@@ -203,7 +203,7 @@ class SomeDomainTest extends ModuleLevelTest {
 
 Whether the entire project's modules are run on the application server, or a select number of modules are utilized within test scope, each incoming request wipes the slate left by the preceding request clean. Any dependencies remotely reliant on any of the request-context-aware objects encountered during that execution will be destroyed. The implication is that if your test contains a double using any of those RCAs, that double will be looking at a stale RCA and will produce unexpected results since it's not managed by the Container.
 
-Where a mock with RCA dependencies should partake in a test, consider applying the [RCA-peeling](/docs/v1/appendix/Transition-from-visual-to-automated-testing#Peeling-off-RCAs) isolation strategy.
+Where a mock with RCA dependencies should partake in a test, consider applying the [RCA-peeling](/docs/v2/appendix/Transition-from-visual-to-automated-testing#Peeling-off-RCAs) isolation strategy.
 
 #### Debugging HTTP exceptions
 
@@ -258,7 +258,7 @@ In spite of their individual uniqueness, since all test-types extend `TestVirgin
 
 The `massProvide` method present on all test types, is used to dispatch objects into the Container. The given concretes are bound to the sole Container on single Container-based tests.
 
-As is detailed [in its chapter](/docs/v1/modules#Binding-automatic-doubles), the recommended location for binding module-scoped objects to their respective Containers is to use the module's build phase. An exception to this rule was mentioned there. Other occassions where it's permissible to bind within the test body include:
+As is detailed [in its chapter](/docs/v2/modules#Binding-automatic-doubles), the recommended location for binding module-scoped objects to their respective Containers is to use the module's build phase. An exception to this rule was mentioned there. Other occassions where it's permissible to bind within the test body include:
 
 - Doubles and dependencies whose formation requires the Container. These are not available during that phase.
 - When you deliberately want to bind an instance of the same object to all Containers participating in the test. Proceed with caution when binding mocks to all Containers as, while the test may pass, it won't convey whether it was executed within the expected module.
@@ -369,7 +369,7 @@ All characteristics differentiating this method from PHPUnit's native annotation
 
 ### Observing Container activity
 
-This refers to an object with methods available for hooking into connected Container, and is intended for internal use, or some complex configuration not yielding expected results in user-land. It is discussed in detail in [the Container chapter](/docs/v1/container#Inspecting-container-activity), but deserves a mention here as well, as it is ubiquitous among all our test types.
+This refers to an object with methods available for hooking into connected Container, and is intended for internal use, or some complex configuration not yielding expected results in user-land. It is discussed in detail in [the Container chapter](/docs/v2/container#Inspecting-container-activity), but deserves a mention here as well, as it is ubiquitous among all our test types.
 
 ## Test doubles
 
