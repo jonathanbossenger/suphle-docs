@@ -385,7 +385,7 @@ class SomeDomainTest extends ModuleLevelTest {
 
 				$container->replaceWithMock(Router::class, RouterMock::class, [
 
-					"browserEntryRoute" => AuthorizeRoutes::class
+					"getCoordinatorClassesToScan" => UserCoordinator::class
 				]);
 			})
 		];
@@ -450,7 +450,7 @@ protected function getModules ():array {
 
 			$container->replaceWithMock(Router::class, RouterMock::class, [
 
-				"browserEntryRoute" => SomeCollection::class
+				"getCoordinatorClassesToScan" => UserCoordinator::class
 			])
 			->replaceWithMock(SomeService::class, SomeService::class, [], [
 

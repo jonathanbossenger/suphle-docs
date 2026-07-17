@@ -398,8 +398,6 @@ The `getCoordinatorPath()` method specifies the relative path to coordinator cla
 
 The `getCoordinatorClassesToScan()` method allows filtering which coordinator classes should be scanned for routes. This is particularly useful for test isolation.
 
-**Here's a cleaner, more honest, and better-structured version** of that section:
-
 ---
 
 ## Payload Handling
@@ -434,36 +432,6 @@ public function showProduct(BaseProductBuilder $builder): Json
 ```
 
 This is the recommended pattern in almost all situations.
-
-### Direct RouteInfo Access (Rare / Last Resort)
-
-Every coordinator automatically receives the `routeInfo` property (populated by the framework before your action method runs). Using it should be treated as a last resort. Prefer `ModelfulPayload` (Builders) and `ModellessPayload` (Readers) in almost all situations.
-
-**Acceptable use cases for direct `routeInfo` access:**
-
-- Very simple scalar operations that don’t justify creating a dedicated Payload class.
-- One-off operations where creating a Payload feels like over-engineering.
-
-#### Example: Simple scalar operation
-
-```php
-#[Route("quick-check/{code}")]
-public function quickStatusCheck(): Json
-{
-    $code = $this->routeInfo->getSegmentValue('code');
-
-    $status = $this->statusService->checkQuickCode($code);
-
-    return new Json([
-        'valid' => $status->isValid,
-        'message' => $status->message
-    ]);
-}
-```
-
-### RouteInfo Caution
-
-If you find yourself needing `routeInfo` in many controllers (e.g. for logging, analytics, or tracking), consider using a [**middleware**](/docs/v2/middleware) instead. Global concerns like analytics, request logging, or metrics collection belong in middleware, not scattered across coordinators.
 
 ---
 

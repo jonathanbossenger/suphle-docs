@@ -211,11 +211,29 @@ php suphle bridge:laravel "make:migration create_employers_table --path=Migratio
 
 The `path` argument is relative to Laravel's base folder, which in Suphle, conforms to the component's location on the module. However, this rigid constraint conflicts with Suphle's architecture, where [models reside outside the module](#Models-location) and are expected to reference their migrations' location. To avoid coupling your models to the component class, the only choice left is for the freshly created migration files to share the same location with their parent models.
 
+#### Running eloquent commands
+
+Above, you might observe familiar interaction with the artisan syntax. Suphle provides a proxy that's especially useful when attempting to run Eloquent-based commands. It sports the following signature:
+
+```bash
+
+php suphle bridge:laravel "your-command" --hydrating_module=ModuleInteractions\\User
+```
+
+What this does is, it takes an optional module to determine what module to effect the command on. When absent, it simply uses defaults to titular module. It then boots Laravel instance it finds at that module accordingly before forwarding given command to it. A real life example would look like so,
+
+```bash
+
+php suphle bridge:laravel "make:migration employment_add_name --path=Migrations"
+```
+
+The underlying command being forwarded to the Artisan runner, along with its parameters should be wrapped in double-quotes, to avoid being interpreted as arguments to the `bridge:laravel` command. It doesn't accept absolute paths.
+
 ## Testing the data layer
 
 Database testing is restricted to module-level test-types, in accordance with the Eloquent ORM. The next paragraph can be skipped if the reason for this is irrelevant to you.
 
-In order to synchronize URL requests coming into the Suphle application with the container (and [possible router](/docs/v2/bridges#Handling-Laravel-routes)) necessary for the ORM to function, a `RequestDetails` instance is required when accessing either database objects or the crutches that facilitate testing this layer. Soon after its creation, this instance emits an event, `RequestDetails::ON_REFRESH`, and [as you know](/docs/v2/events/#Setting-an-event-manager), events cannot exist without a module.
+In order to synchronize URL requests coming into the Suphle application with the container necessary for the ORM to function, a `RequestDetails` instance is required when accessing either database objects or the crutches that facilitate testing this layer. Soon after its creation, this instance emits an event, `RequestDetails::ON_REFRESH`, and [as you know](/docs/v2/events/#Setting-an-event-manager), events cannot exist without a module.
 
 Any test whose needs cuts across any of these entities is advised to include a call to the `parent` class from your `Events` implementation.
 
