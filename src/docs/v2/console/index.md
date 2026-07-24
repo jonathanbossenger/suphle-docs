@@ -64,7 +64,7 @@ $moduleInterface = $input->getOption(self::HYDRATOR_MODULE_OPTION);
 $this->getExecutionContainer($moduleInterface)->getClass(BCounter::class);
 ```
 
-The reason we don't use the contructor to inject it is that in a given application, numerous modules may contain the same command. However, during execution, we would rather narrow down execution or modification to one target module at a time. An example is the [component install](/docs/v1/component-templates) command, or the artisan migration commands.
+The reason we don't use the contructor to inject it is that in a given application, numerous modules may contain the same command. However, during execution, we would rather narrow down execution or modification to one target module at a time. An example is the [component install](/docs/v2/component-templates) command, or the artisan migration commands.
 
 The `BaseCliCommand::HYDRATOR_MODULE_OPTION` (or, the `--hydrating_module` flag), enables the caller specify what module context to execute in. When this context is not mandatory for a command, the option can be removed by setting `BaseCliCommand::withModuleOption` to false.
 

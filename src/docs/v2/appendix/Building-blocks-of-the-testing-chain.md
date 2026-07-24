@@ -81,7 +81,7 @@ class SomeCoordinator {
 ```
 
 Some other times, the object needs to collaborate with guardians or 
-managers, as its own invocation won't make thematic sense in the bigger picture. This is discussed in more detail in the chapter covering [isolation techniques](/docs/v1/appendix/Transition-from-visual-to-automated-testing#unit-isolation-strategies). In the interim, it suffices to know that inducement in this context refers to the act of **triggering** some effect, behavior or functionality we intend to observe.
+managers, as its own invocation won't make thematic sense in the bigger picture. This is discussed in more detail in the chapter covering [isolation techniques](/docs/v2/appendix/Transition-from-visual-to-automated-testing#unit-isolation-strategies). In the interim, it suffices to know that inducement in this context refers to the act of **triggering** some effect, behavior or functionality we intend to observe.
 
 ## The effect
 
@@ -100,7 +100,7 @@ $sum = $operation->subtractNumbers(23, 18);
 $subtractsCorrectly = $sum === 5; // the observation
 ```
 
-Each kind of event has a [corresponding programmatic method](/docs/v1/appendix/Transition-from-visual-to-automated-testing#Literal-equivalent-identification) of observation. You aren't mandated to cram methods you don't need yet.
+Each kind of event has a [corresponding programmatic method](/docs/v2/appendix/Transition-from-visual-to-automated-testing#Literal-equivalent-identification) of observation. You aren't mandated to cram methods you don't need yet.
 
 ## Combining event induction and observation
 
@@ -153,7 +153,7 @@ Sometimes, the object where an event is being induced from will be different fro
 
 Take for instance, the definition of `RealLifeService`; suppose `ComplexDependency` is a library whose methods have been tested, and we want to test its integration with `RealLifeService` i.e. that returned value is indeed derived from `ComplexDependency::deriveOldValue` only when `DirectionIndicator::turnsRed`, we can be said to have a pre-condition the system must satisfy to be in a state that forces execuion down the path we intend to observe.
 
-There are [a few ways](/docs/v1/testing#Reading-from-active-Container) to put collaborators in desired states, depending on the object design of said collaborator. However, for the purpose of this illustration, we'll stub that method.
+There are [a few ways](/docs/v2/testing#Reading-from-active-Container) to put collaborators in desired states, depending on the object design of said collaborator. However, for the purpose of this illustration, we'll stub that method.
 
 ```php
 
@@ -189,6 +189,6 @@ Note that `RealLifeService`, above, is used for illustrative purposes. In the re
 
 When `SecondCustomTest::test_red_light_gets_old_value` passes, it acts as a guarantee that not only does the system work as intended, but that unwitting or accidental modification interferring with that expectation is caught before the software reaches its consumers. Where this modification is actually intentional, the test would have served its purpose and should be replaced by a new one covering the newly included functionality or expectation.
 
-Sometimes, the functionality you intend to test is a Framework-aware behavior; in which case, it may be more expedient to be assisted by the framework-provided constructs put in place for testing those features. While testing [events](/docs/v1/events), for instance, you're not expected to verify your listeners were called using mocks. While that would equally work, framework-provided constructs are intended as conveniences that simplify the DSL in question, thereby aiding readability, and save you from the low-level details of wiring test doubles, so you can focus more on inducing the action itself.
+Sometimes, the functionality you intend to test is a Framework-aware behavior; in which case, it may be more expedient to be assisted by the framework-provided constructs put in place for testing those features. While testing [events](/docs/v2/events), for instance, you're not expected to verify your listeners were called using mocks. While that would equally work, framework-provided constructs are intended as conveniences that simplify the DSL in question, thereby aiding readability, and save you from the low-level details of wiring test doubles, so you can focus more on inducing the action itself.
 
 Do refer to each chapter of this documentation covering user-facing functionality to consult with their testing components.

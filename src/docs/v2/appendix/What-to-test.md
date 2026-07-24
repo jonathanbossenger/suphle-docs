@@ -1,6 +1,6 @@
 ## Introduction
 
-The question "What part of the application do we test?", spurs a range of possible choices. For instance, one may ponder whether to concentrate efforts on the [coordinators](/docs/v1/service-coordinators) since it encompasses the user's interaction with the web-application? To what extent should attention be paid to [request validators](/docs/v1/service-coordinators#Validating-incoming-requests) so as to secure our endpoints from nonsensical input? What about models, events, services?
+The question "What part of the application do we test?", spurs a range of possible choices. For instance, one may ponder whether to concentrate efforts on the [coordinators](/docs/v2/service-coordinators) since it encompasses the user's interaction with the web-application? To what extent should attention be paid to [request validators](/docs/v2/service-coordinators#Validating-incoming-requests) so as to secure our endpoints from nonsensical input? What about models, events, services?
 
 This chapter sets out to walk through the various user-land layers, in order to glean which of them would be most beneficial to test.
 
@@ -26,7 +26,7 @@ In the actual sense, no one sector meets those objectives in an optimal measure.
 
 For some background, we're differentiating between the *transport layer* and business logic. The transport layer encapsulates peripheral mechanisms for carrying data in and out of the business layer. These are coordinators, queue tasks, middleware, Container and event bindings, console commands, presentation formats, that category of layers. On the other hand, there is company-specific behavior backed by the transport layer, without which those domains lose their meaning. This idea is what is being referred to as *business layer*.
 
-When decoupled from the transport layer, a strictly business layer can be adequately tested irrespective of a specific transport layer. That is one of the driving factors behind Suphle's replacement of Controllers with [Coordinators](/docs/v1/service-coordinators#Coordinator-services), [outgoing request wrappers](/docs/v1/http), and the likes. You're expected to replicate this philosophy across your transport layer i.e. extracting as much behavior as possible out of it. These extracts are what should be rigorously tested.
+When decoupled from the transport layer, a strictly business layer can be adequately tested irrespective of a specific transport layer. That is one of the driving factors behind Suphle's replacement of Controllers with [Coordinators](/docs/v2/service-coordinators#Coordinator-services), [outgoing request wrappers](/docs/v2/http), and the likes. You're expected to replicate this philosophy across your transport layer i.e. extracting as much behavior as possible out of it. These extracts are what should be rigorously tested.
 
 For example, our objective is to build a feed for users to see content from accounts they are following. If the test for this problem approaches it from the implementation standpoint, it'll make the test look redundant. An working implementation could start out as follows:
 
@@ -93,7 +93,7 @@ public function test_fetches_only_subscribed_content () {
 }
 ```
 
-Our `test_fetches_only_subscribed_content` relies on the premise that `isFollowingAuthor` has a test that uses [the `databaseApi` property](/docs/v1/database#Asserting-database-state) to verify at the lower-level, that the relationship column matches the given value.
+Our `test_fetches_only_subscribed_content` relies on the premise that `isFollowingAuthor` has a test that uses [the `databaseApi` property](/docs/v2/database#Asserting-database-state) to verify at the lower-level, that the relationship column matches the given value.
 
 After testing the business layer, any spare time available should be purposed towards endorsing its integration with the transport layer: confirm the presence of expected validation rules, that your server-rendered template successfully parses against the actual response payload, etc.
 

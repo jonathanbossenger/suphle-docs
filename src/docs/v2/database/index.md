@@ -4,7 +4,7 @@ The database layer can be considered as the heart of your program. It's where we
 
 ## Choosing an ORM
 
-An object relational mapper, though not absolutely crucial, is often used to abstract away rows and functionality from the walls of the database server, into strongly-typed objects. PHP happens to be furnished with some established ORM libraries (not limited to [Eloquent](laravel.com/docs/8.x/eloquent) and [Cycle ORM](cycle-orm.dev)), with vast coverage of most possible database needs. Suphle keeps an open mind regarding your choice of which to use. If you are at a loss and could use some recommendation, do read on.
+An object relational mapper, though not absolutely crucial, is often used to abstract away rows and functionality from the walls of the database server, into strongly-typed objects. PHP happens to be furnished with some established ORM libraries (not limited to [Eloquent](laravel.com/docs/9.x/eloquent) and [Cycle ORM](cycle-orm.dev)), with vast coverage of most possible database needs. Suphle keeps an open mind regarding your choice of which to use. If you are at a loss and could use some recommendation, do read on.
 
 ### Active Record pattern
 
@@ -133,7 +133,7 @@ Majority of your interaction with an ORM will be done against methods on its par
 - Models not having factories or migrations
 - Indiscriminate access to model instances using facades
 
-This class is known as `Suphle\Adapters\Orms\Eloquent\Models\BaseModel` and all models are expected to extend it. Specifics regarding factories are described in greater detail on [their documentation page](https://laravel.com/docs/8.x/database-testing#defining-model-factories), although you may want to look at off the shelf [solutions at automating](github.com/mpociot/laravel-test-factory-helper) this task.
+This class is known as `Suphle\Adapters\Orms\Eloquent\Models\BaseModel` and all models are expected to extend it. Specifics regarding factories are described in greater detail on [their documentation page](https://laravel.com/docs/9.x/database-testing#defining-model-factories), although you may want to look at off the shelf [solutions at automating](github.com/mpociot/laravel-test-factory-helper) this task.
 
 Within the default interface loader of `OrmDialect`, a call is placed to boot all models into their strict mode. This prevents them from:
 
@@ -206,10 +206,17 @@ While testing `Employer`, the test runner will scan specified directories in an 
 
 ```bash
 
-php suphle bridge:laravel "make:migration create_employers_table --path=Migrations"
+php suphle bridge:laravel "make:migration create_employers_table"
 ```
 
-The `path` argument is relative to Laravel's base folder, which in Suphle, conforms to the component's location on the module. However, this rigid constraint conflicts with Suphle's architecture, where [models reside outside the module](#Models-location) and are expected to reference their migrations' location. To avoid coupling your models to the component class, the only choice left is for the freshly created migration files to share the same location with their parent models.
+The `path` argument common with Artisan commands is relative to Laravel's base folder, which in Suphle, conforms to the component's location on the module. In order to point the ORM to another path, either use the `realpath` argument along with the full path to your target directory, or configure desired path programmatically. For example, to modify migration paths alone, you could override `Suphle\Bridge\Laravel\InterfaceLoaders\ArtisanLoader::afterBind`
+
+```php 
+$this->laravelContainer->make("migrator")
+->path($this->databaseConfig->componentInstallPath());
+```
+
+Suphle's architecture recommends [models reside outside the module](#Models-location) and should be co-located with their migrations. Hence they were configured globally for you using `useDatabasePath`.
 
 #### Running eloquent commands
 
@@ -224,7 +231,7 @@ What this does is, it takes an optional module to determine what module to effec
 
 ```bash
 
-php suphle bridge:laravel "make:migration employment_add_name --path=Migrations"
+php suphle bridge:laravel "make:migration employment_add_name"
 ```
 
 The underlying command being forwarded to the Artisan runner, along with its parameters should be wrapped in double-quotes, to avoid being interpreted as arguments to the `bridge:laravel` command. It doesn't accept absolute paths.

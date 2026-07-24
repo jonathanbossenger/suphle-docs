@@ -2,7 +2,7 @@
 
 As a wise friend once put it, "the devil is in the maintenance. Don't assume knowledge about the full cost of a thing until you understand what maintaining it entails,". Projects built by single developers from the comfort of their basement can withstand any level of change over the years since the author knows where everything is and may not be the best judge of the code's quality or stability. Bigger projects with multiple contributors require a conscious effort to cushion the diversity of ideas such that each competent member can replace parts of the code they met while keeping the contraption running smoothly, as though it were one uniform block.
 
-In this chapter, we'll be looking at strategies for the new addition to dovetail the way it would have, had it been planned along with the original structure. It assumes an already firm [grasp of test automation](/docs/v1/appendix/Building-blocks-of-the-testing-chain).
+In this chapter, we'll be looking at strategies for the new addition to dovetail the way it would have, had it been planned along with the original structure. It assumes an already firm [grasp of test automation](/docs/v2/appendix/Building-blocks-of-the-testing-chain).
 
 ## Team synchronization
 
@@ -54,7 +54,7 @@ After putting these in place, we hope to have laid foundations for the project's
 
 Some of the guidelines that govern fresh development equally intersect with those recommended for use when introducing new changes. These steps are to be followed sequentially, with some fortification in-between:
 
-1. Arrange or organize your modification properly in their own folder. In a module-based system like Suphle's, that would be represented as unique [feature folders](/docs/v1/routing#Feature-toggling) in each module that the incoming change cuts across. While all requirements for the feature can still be tested in isolation, we can centralize our mocking logic for components under that domain who likely share similar dependencies.
+1. Arrange or organize your modification properly in their own folder. In a module-based system like Suphle's, that would be represented as unique [feature folders](/docs/v2/routing#Feature-toggling) in each module that the incoming change cuts across. While all requirements for the feature can still be tested in isolation, we can centralize our mocking logic for components under that domain who likely share similar dependencies.
 
 1. The contents of this feature folder must be tested thoroughly.
 
@@ -64,9 +64,9 @@ Some of the guidelines that govern fresh development equally intersect with thos
 
 After implementing our shiny new feature, modifying or refactoring an existing one, the software is bound to break. Have no doubt about it. To be fair, the odds are not entirely 100:0, but they're so negligible that it's more realistic to simply round it off. Your only hope of turning the tide in your favor is by testing the system afterwards. There are multiple methods to test stability and integration of our modifications to the system, depending on [the manner of change being effected](#Fixing-a-broken-integration).
 
-We mentioned earlier the usefulness of the event-for-non-fetches approach from the [onset](#Initial-build-guidelines). The caveat to this rule is that it only applies under situations where we're not modifying existing behaviour itself but only augmenting it. When the motive is to replace existing behaviour, we have to either [extend](#Extending-and-integrating-existing-parts) or modify the existing system, depending on intended longevity of the modification. In any case, the fresh addition should be tested in isolation to guarantee it functions as intended before its integration into the system (using `whenTypeAny()` or any other [binding mechanism](/docs/v1/container#Putting-objects-into-the-container)). Afterwards, the entire test suite should be run and pass, as a stamp of stability.
+We mentioned earlier the usefulness of the event-for-non-fetches approach from the [onset](#Initial-build-guidelines). The caveat to this rule is that it only applies under situations where we're not modifying existing behaviour itself but only augmenting it. When the motive is to replace existing behaviour, we have to either [extend](#Extending-and-integrating-existing-parts) or modify the existing system, depending on intended longevity of the modification. In any case, the fresh addition should be tested in isolation to guarantee it functions as intended before its integration into the system (using `whenTypeAny()` or any other [binding mechanism](/docs/v2/container#Putting-objects-into-the-container)). Afterwards, the entire test suite should be run and pass, as a stamp of stability.
 
-Don't change numerous parts of the system haphazardly so as not to render it unrunnable. A *system* here, can refer to a module or group of collaborating classes that form an integration test. It can be tricky to edit them coherently, considering how intertwined implementation of real-life features can be. That's where our [isolatory tactics](/docs/v1/appendix/Transition-from-visual-to-automated-testing#unit-isolation-strategies) should come to play. They ought to enable incremental modification while maintaining system stability. With the aid of doubles and extensions, you should be able to break the bigger picture into smaller units by its Areas of Impact. Implement all requirements for each constituent from its little corner, without leaving system worse than you met it, or losing the ability to test that AoI independently.
+Don't change numerous parts of the system haphazardly so as not to render it unrunnable. A *system* here, can refer to a module or group of collaborating classes that form an integration test. It can be tricky to edit them coherently, considering how intertwined implementation of real-life features can be. That's where our [isolatory tactics](/docs/v2/appendix/Transition-from-visual-to-automated-testing#unit-isolation-strategies) should come to play. They ought to enable incremental modification while maintaining system stability. With the aid of doubles and extensions, you should be able to break the bigger picture into smaller units by its Areas of Impact. Implement all requirements for each constituent from its little corner, without leaving system worse than you met it, or losing the ability to test that AoI independently.
 
 ### Extending and integrating existing parts
 
@@ -74,7 +74,7 @@ As we said earlier, class extensions should be used when working on short-term r
 
 That said, don't modify a dependency to suit the needs of one of the new additions being introduced to avoid the risk of breaking already consuming clients. Always build an abstraction around that dependency and bind to that. It's this abstraction that is synchronized with its previous edition, tested, before being linked to both old and new clients.
 
-This systematic integration works under a similar premise to [API versioning](/docs/v1/routing#API-collection-stack) i.e. the principle that clients should always be able to trust the dependency currently working for them. The project should continue on the stable path it was met while the new additions are being tested in isolation for correctness and compatibility with clients before its integration.
+This systematic integration works under a similar premise to [API versioning](/docs/v2/routing#API-collection-stack) i.e. the principle that clients should always be able to trust the dependency currently working for them. The project should continue on the stable path it was met while the new additions are being tested in isolation for correctness and compatibility with clients before its integration.
 
 To illustrate, let's assume we have a Coordinator that simply invokes a service to perform an action:
 
@@ -153,7 +153,7 @@ class BusinessService {
 }
 ```
 
-The challenge arises when in order to reach its goals, `doYToProduct` adjusts `DpDUtility`, dependency commonly shared with `doXToProduct`. In order to protect its consumers from breaking while work on `doYToProduct` is in progress, `DpDUtility` should be converted to an interface, thereby making it flexible to [inject relevant implementations](/docs/v1/container#Explicit-method-arguments-context) -- in this case, `XBusiness` continues to rely on the current `DpDUtility` until it's considered safe for it to catch up with the extension.
+The challenge arises when in order to reach its goals, `doYToProduct` adjusts `DpDUtility`, dependency commonly shared with `doXToProduct`. In order to protect its consumers from breaking while work on `doYToProduct` is in progress, `DpDUtility` should be converted to an interface, thereby making it flexible to [inject relevant implementations](/docs/v2/container#Explicit-method-arguments-context) -- in this case, `XBusiness` continues to rely on the current `DpDUtility` until it's considered safe for it to catch up with the extension.
 
 ```php
 
@@ -196,7 +196,7 @@ A frequent source of disaster during upgrades is the database. It's a delicate c
 
 One of the cardinal points to bear in mind is that migrations should be your sole platform for interfacing with the database, not some GUI client or DBMS.
 
-There are a few conventions available for co-locating models and migrations. We can either create migration folders for each model, dump all migrations in one folder under the `AppModels` namespace, or any other clever method of co-habitation; each with its own con. It may even be more convenient to combine multiple conventions in order to reap maximum benefits i.e. all table creation migrations reside under one common directory so the paths of the relationship migration are not manually [configured](/docs/v1/database#Configuring-table-structure). Migrations for implementing certain features can then go into their appropriate directories.
+There are a few conventions available for co-locating models and migrations. We can either create migration folders for each model, dump all migrations in one folder under the `AppModels` namespace, or any other clever method of co-habitation; each with its own con. It may even be more convenient to combine multiple conventions in order to reap maximum benefits i.e. all table creation migrations reside under one common directory so the paths of the relationship migration are not manually [configured](/docs/v2/database#Configuring-table-structure). Migrations for implementing certain features can then go into their appropriate directories.
 
 ### Modifying model columns
 

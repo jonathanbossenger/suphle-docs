@@ -27,7 +27,7 @@ Test equivalent identification is so important that without it, we won't know ho
 
 Identifying the automated equivalent of the behavior you wish to observe begins with where you would have asserted it without tests. If you would've gone through your DBMS, the test equivalent will be database-related -- either it revolves around a trait containing the term "database" or a similar nomenclature. The same way you find the updated row and visually appraise the column in question, in your test, you'll drill down to relevant using its identifier, and assert its column is in order.
 
-Below, we illustrate the automation of a [database verification using Suphle's](/docs/v1/database#Testing-the-data-layer) available constructs.
+Below, we illustrate the automation of a [database verification using Suphle's](/docs/v2/database#Testing-the-data-layer) available constructs.
 
 ```php
 
@@ -70,7 +70,7 @@ class SomeDatabaseTest extends ModuleLevelTest {
 
 In the test above, the database is seeded with a known value to ensure our change is not effected against any random entity but that which we expect to be modified -- much the same way a DBMS row is observed before and after running a piece of code we're visually verifying.
 
-To conduct tests interacting with the database, knowledge of [migrations](/docs/v1/database#Configuring-table-structure) is compulsory. They are an object-oriented, incremental means of programmatically customizing the database column properties that the GUI DBMS offers with drop-downs. They are ORM specific, so if you're unfamiliar with them, consider going through the documentation of your connected ORM.
+To conduct tests interacting with the database, knowledge of [migrations](/docs/v2/database#Configuring-table-structure) is compulsory. They are an object-oriented, incremental means of programmatically customizing the database column properties that the GUI DBMS offers with drop-downs. They are ORM specific, so if you're unfamiliar with them, consider going through the documentation of your connected ORM.
 
 If you would have opened a page to follow a visual cue after performing an action, check for the test method that cue best translates to. Perhaps, some part of your code must have already interacted with the fields in question. That could also give you a clue on what the automated equivalent of that which you seek to verify is.
 
@@ -100,7 +100,7 @@ public function test_cars_are_sorted_by_date () {
 
 Another way we manually test our code is by using the var-dump-die combo or the framework's variant for well-formatted output. You may have observed that Suphle has no such construct. This is no accident. Such functions foster and encourage undocumented behavior, untyped signatures, when verifying the state of an object, value of a primitive computation. The confusion of the current reader is an indication that tomorrow's maintainer will ask the same questions this reader did -- questions they will be grateful did not exist in the first place; because without exception, each of these scenarios is a pointer to a problem that should be solved in a more appropriate manner to var-dumping.
 
-For example, to verify an SUT's state after an action, [induce that action and observe its targets](/docs/v1/appendix/Building-blocks-of-the-testing-chain). Adequately comment complicated implementation. Type your parameters, instance properties and return types.
+For example, to verify an SUT's state after an action, [induce that action and observe its targets](/docs/v2/appendix/Building-blocks-of-the-testing-chain). Adequately comment complicated implementation. Type your parameters, instance properties and return types.
 
 ## Isolating units for testing
 
@@ -127,7 +127,7 @@ The monolithic size of a request's payload should not be allowed to obstruct you
 #### Injecting lengthy parameters
 
 Instantiating a large number of arguments into constructors can get 
-tiresome and make the test unwieldy. This problem may be difficult to spot due to the fact that dependencies are advised to be [hydrated automatically](/docs/v1/testing#Reading-from-active-Container) rather than manually. However, closer attention to some of the calls made to those dependencies within the SUT, should reveal a trend indicating some collaborators with a shared objective, that should be grouped into another class.
+tiresome and make the test unwieldy. This problem may be difficult to spot due to the fact that dependencies are advised to be [hydrated automatically](/docs/v2/testing#Reading-from-active-Container) rather than manually. However, closer attention to some of the calls made to those dependencies within the SUT, should reveal a trend indicating some collaborators with a shared objective, that should be grouped into another class.
 
 ### Unit isolation strategies
 
@@ -137,7 +137,7 @@ All strategies favor extracting surrounding conditions enabling replication of o
 
 This strategy is perhaps the easiest to implement and is most relevant for testing internal behavior rather than externals such as the result of a method call. It advocates for pulling out clusters of tangled code into standalone methods that can be tested. Methods should not contain so much logic in and of themselves that it takes considerable effort to replicate conditions necessary for verifying its entrails.
 
-[As has already been said](/docs/v1/appendix/Building-blocks-of-the-testing-chain#the-induction), any value we intend to test has to end up somewhere, either assigned to a property nor returned by the method. Otherwise, there simply would be no way to observe it. Wrapping the steps leading up to that value, `x`, crowded in the middle of a lengthy sheet of statements makes for more cohesive, cleaner code that is ready for reuse. But when that is not possible, hook up a checkpoint wherever `x` is eventually used, with the aid of mocks and spies.
+[As has already been said](/docs/v2/appendix/Building-blocks-of-the-testing-chain#the-induction), any value we intend to test has to end up somewhere, either assigned to a property nor returned by the method. Otherwise, there simply would be no way to observe it. Wrapping the steps leading up to that value, `x`, crowded in the middle of a lengthy sheet of statements makes for more cohesive, cleaner code that is ready for reuse. But when that is not possible, hook up a checkpoint wherever `x` is eventually used, with the aid of mocks and spies.
 
 There can be some dilemma between methods concealing/encapsulating variables vital to their inner workings, and ensuring the influential parameters they need to do their work can be supplied externally. This conflict of interest occasionally presents itself as private methods, fixed values, or what have you.
 

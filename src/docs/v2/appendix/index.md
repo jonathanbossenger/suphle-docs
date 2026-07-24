@@ -4,9 +4,9 @@ This chapter is a living anthology covering topics not hard-coded to the Suphle 
 
 They're ordered below by increasing degree of difficulty or reader advancement:
 
-1. [Are tests worth the hype?](/docs/v1/appendix/Are-tests-worth-the-hype)
-1. [Juxtaposing TDD against retrofitted testing.](/docs/v1/appendix/Juxtaposing-TDD-against-retrofitted-testing)
-1. [Building blocks of the testing chain.](/docs/v1/appendix/Building-blocks-of-the-testing-chain)
-1. [What to test.](/docs/v1/appendix/What-to-test)
-1. [Transition from visual to automated testing.](/docs/v1/appendix/Transition-from-visual-to-automated-testing)
-1. [Confidently integrating upgrades.](/docs/v1/appendix/Confidently-integrating-upgrades)
+1. [Are tests worth the hype?](/docs/v2/appendix/Are-tests-worth-the-hype)
+1. [Juxtaposing TDD against retrofitted testing.](/docs/v2/appendix/Juxtaposing-TDD-against-retrofitted-testing)
+1. [Building blocks of the testing chain.](/docs/v2/appendix/Building-blocks-of-the-testing-chain)
+1. [What to test.](/docs/v2/appendix/What-to-test)
+1. [Transition from visual to automated testing.](/docs/v2/appendix/Transition-from-visual-to-automated-testing)
+1. [Confidently integrating upgrades.](/docs/v2/appendix/Confidently-integrating-upgrades)

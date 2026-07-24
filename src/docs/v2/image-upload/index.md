@@ -4,7 +4,7 @@ This chapter addresses methods by which we optimize images coming into our appli
 
 ## Intercepting image files
 
-Converting uploaded images in Suphle is [conceptually consistent](/docs/v1/service-coordinators#Model-based-request-type) with `ModellessPayload` in that there's an overarching reader used to extract relevant input entries. In the case of images, recommended reader is `Suphle\Services\Structures\ImagefulPayload`. However, instead of returning a database builder, it's expected to return an image optimization builder.
+Converting uploaded images in Suphle is [conceptually consistent](/docs/v2/service-coordinators#Model-based-request-type) with `ModellessPayload` in that there's an overarching reader used to extract relevant input entries. In the case of images, recommended reader is `Suphle\Services\Structures\ImagefulPayload`. However, instead of returning a database builder, it's expected to return an image optimization builder.
 
 A complete image upload collaboration will look similar to that below.
 
@@ -168,7 +168,7 @@ public function applyWatermark (ImagePayloadReader $payload):array {
 }
 ```
 
-We are able to type-hint any client necessary for the operation, since `OptimizersManager` is [decorated with](/docs/v1/service-coordinators#Variadic-setters) `Suphle\Contracts\Services\Decorators\VariableDependencies`.
+We are able to type-hint any client necessary for the operation, since `OptimizersManager` is [decorated with](/docs/v2/service-coordinators#Variadic-setters) `Suphle\Contracts\Services\Decorators\VariableDependencies`.
 
 #### Writing an operation
 

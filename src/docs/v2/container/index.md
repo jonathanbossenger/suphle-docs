@@ -8,7 +8,7 @@ Methods on the main Container class are conceptually divided into two: those for
 
 ## Putting objects into the container
 
-For the record, the container is able to recursively walk object constructors, hydrating type-hinted dependencies all the way. It only needs assistance when a type-hint is an interface. Other times, we may want to inject the instance of a class booted to a desired state. We're not expected to inject primitives since, for them to be dynamic, they have to come from some other source (most often, [the env](/docs/v1/environment)), that should be strongly typed. What we're putting into the container determines how it's being put.
+For the record, the container is able to recursively walk object constructors, hydrating type-hinted dependencies all the way. It only needs assistance when a type-hint is an interface. Other times, we may want to inject the instance of a class booted to a desired state. We're not expected to inject primitives since, for them to be dynamic, they have to come from some other source (most often, [the env](/docs/v2/environment)), that should be strongly typed. What we're putting into the container determines how it's being put.
 
 ### Providing interfaces
 
@@ -39,7 +39,7 @@ class ModuleOneDescriptor extends ModuleDescriptor {
 
 While it would've been considered elegant for these provisions to be bound using attributes, that pattern has the disadvantage of discoverability for auto-binding.
 
-The default implementation of the `InterfaceCollection` is `Suphle\Hydration\Structures\BaseInterfaceCollection` -- more of an indispensable class than a replaceable one -- from which you're expected to extend. `InterfaceCollection` exposes methods that describe what kind of interface it is being provided. They all return key-value arrays pairing the interface to the name of a concrete implementation. At the very least, the interface collection of [a module involved in routing](/docs/v1/modules#Connecting-standalone-modules) will have a semblance to that below:
+The default implementation of the `InterfaceCollection` is `Suphle\Hydration\Structures\BaseInterfaceCollection` -- more of an indispensable class than a replaceable one -- from which you're expected to extend. `InterfaceCollection` exposes methods that describe what kind of interface it is being provided. They all return key-value arrays pairing the interface to the name of a concrete implementation. At the very least, the interface collection of [a module involved in routing](/docs/v2/modules#Connecting-standalone-modules) will have a semblance to that below:
 
 ```php
 namespace Suphle\Tests\Mocks\Modules\ModuleOne\Meta;
@@ -547,7 +547,7 @@ The fact that concretes are decoupled from their interfaces makes the likelihood
 
 When this is the case, the container won't proxy calls to the interface. Even though it's possible to extract and wrap their concrete on the fly, the overhead and sheer *sorcery* of such an implementation deviate too far away from the language's expected behaviour, for very little benefit. Doing so goes against one of Suphle's core principles. That said, when Container encounters such concretes, it will throw a `Suphle\Exception\Explosives\DevError\HydrationException`.
 
-Similar proxying rules to the [auto-error catching decorator](/docs/v1/service-coordinators#Readonly-modifier) is equally applicable to circular dependencies.
+Similar proxying rules to the [auto-error catching decorator](/docs/v2/service-coordinators#Readonly-modifier) is equally applicable to circular dependencies.
 
 Circular dependencies are commonly associated with class-class constructor similarity but can equally spring up in surprising areas of the project. For instance:
 

@@ -2,7 +2,7 @@
 
 The discussion here is not intended to stir a controversial debate between TDD/Test-First proponents (abbreviated henceforth as TF), and Retrofitted Testers (hereafter referred to as RTers). Retrofitted Testing is not being imposed as a more superior testing methodology. If you're already comfortable with TF, this chapter may not be of much benefit to you. However, there are some categories of engineers it will appeal to. A few that quickly come to mind are:
 
-- Younger developers stymied by an inferiority complex owing to [their exclusion](/docs/v1/appendix/Transition-from-visual-to-automated-testing#Actual-reasons-tests-are-not-automated) from the TDD bandwagon. My mantra is for them to move onto test automation by any means possible. Once conversant with that, they're more learned to decide on what paradigm suits them better.
+- Younger developers stymied by an inferiority complex owing to [their exclusion](/docs/v2/appendix/Transition-from-visual-to-automated-testing#Actual-reasons-tests-are-not-automated) from the TDD bandwagon. My mantra is for them to move onto test automation by any means possible. Once conversant with that, they're more learned to decide on what paradigm suits them better.
 
 - Older developers who are interested in ensuring younger ones are not misled by dangerous heuristics. Those in this category are urged to approach this document with an unbiased mind. If any of the sentiments expressed here are wrong, you're encouraged to dispute them on a new discussion on the [documentation repo](https://github.com/nmeri17/suphle-docs/discussions/new?category=ideas), selecting the labels `appendix` and `retrofitted-testing` to that effect.
 
@@ -50,7 +50,7 @@ While both are done at the same time and can guarantee the program ~~still~~ wor
 
 Except the generator is an AI that understands input on what is required of the underlying system, it can only convert code to tests under the assumption that implemented code is accurate and intended. For instance, we have a method that performs some complex calculations (e.g. computing a shipping price based on factors such as profile history), and returns a value. If this procedure is error-free, a generated test will simply report returned value as correct and pass all its tests.
 
-In order to qualify as a test, at the very least, [an expectation](/docs/v1/Building-blocks-of-the-testing-chain#The-effect) must exist. As expectations are subjective to the test's input, human interference is simply non-negotiable.
+In order to qualify as a test, at the very least, [an expectation](/docs/v2/Building-blocks-of-the-testing-chain#The-effect) must exist. As expectations are subjective to the test's input, human interference is simply non-negotiable.
 
 One may suggest that simplistic tests verifying status code and shape of the response rather than intimate behavior can be generated. However, the fact that their human-written equivalent is an artifact close to boilerplate casts doubts over the usefulness of such tests, in the first place. That kind of foreknowledge is not valuable to test for the sake of testing.
 

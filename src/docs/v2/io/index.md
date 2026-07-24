@@ -40,7 +40,7 @@ Suphle's default implementation of the `Session` interface is powered by the cac
 
 The interface's concrete is booted and managed automatically by `Suphle\Auth\Repositories\BrowserAuthRepo`, at the authentication layer. Its implication is that:
 
-1. Its contents will be empty at routes bound to the `TokenStorage` [authentication mechanism](/docs/v1/routing#authentication). This is expected behavior as only browsers send cookies and as such, are capable of session retention.
+1. Its contents will be empty at routes bound to the `TokenStorage` [authentication mechanism](/docs/v2/routing#authentication). This is expected behavior as only browsers send cookies and as such, are capable of session retention.
 
 1. Methods to be interacted with on this interface depend on how low-level your needs are. For trivial cases, only `setValue`, `getValue`, `hasKey`, `setFlashValue` should be useful to you. Data entered through the `setFlashValue` method will automatically be wiped on the subsequent request.
 
@@ -141,7 +141,7 @@ class DefaultCacheConfig implements CacheClient {
 }
 ```
 
-The adapter must then be connected to the rest of the application, ideally through an [interface loader](/docs/v1/container#Interface-loaders).
+The adapter must then be connected to the rest of the application, ideally through an [interface loader](/docs/v2/container#Interface-loaders).
 
 ## Mailing
 
@@ -165,7 +165,7 @@ interface MailClient {
 }
 ```
 
-You're not expected to pollute your `Task` implementation with mail composition logic, as it may be focused on other higher-level responsibilities. Thus, you may consider abstracting it away to the very simple `Suphle\IO\Mailing\MailBuilder` class. To illustrate this, we'll borrow the `MailBuildAlerter` used by the default [Shutdown alerter](/docs/v1/exceptions#Shutdown-alerters):
+You're not expected to pollute your `Task` implementation with mail composition logic, as it may be focused on other higher-level responsibilities. Thus, you may consider abstracting it away to the very simple `Suphle\IO\Mailing\MailBuilder` class. To illustrate this, we'll borrow the `MailBuildAlerter` used by the default [Shutdown alerter](/docs/v2/exceptions#Shutdown-alerters):
 
 ```php
 

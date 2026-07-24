@@ -48,7 +48,7 @@ public function defaultHandler ():string {
 
 ### Exception diffusers
 
-Diffusers enable us customize how exceptions are handled and dictate what renderer will be used to materialize a response. Suphle's exception component publishes presentation [templates](/docs/v1/component-templates) for its available diffusers. Unless you wish to modify underlying behavior, it's enough to only tamper with templates published for the exceptions.
+Diffusers enable us customize how exceptions are handled and dictate what renderer will be used to materialize a response. Suphle's exception component publishes presentation [templates](/docs/v2/component-templates) for its available diffusers. Unless you wish to modify underlying behavior, it's enough to only tamper with templates published for the exceptions.
 
 #### Writing custom diffusers
 
@@ -201,7 +201,7 @@ class DecoratedServiceTest extends ModuleLevelTest {
 }
 ```
 
-[These debug constructs](/docs/v1/testing#Debugging-HTTP-exceptions) should be removed from the test class after deciphering what's wrong behind the scenes.
+[These debug constructs](/docs/v2/testing#Debugging-HTTP-exceptions) should be removed from the test class after deciphering what's wrong behind the scenes.
 
 ### Specific exception testing
 

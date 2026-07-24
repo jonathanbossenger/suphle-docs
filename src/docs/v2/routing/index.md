@@ -904,7 +904,7 @@ When using the `--json` flag, the command outputs structured JSON data:
     "path": "/api/v1/users",
     "handler": "store",
     "renderer": "Suphle\\Response\\Format\\Json",
-    "middleware": ["App\\Middleware\\AuthMiddleware"],
+    "middleware": ["App\\Middleware\\AuthenticateHandler"],
     "canary_state": null,
     "placeholders": [],
     "coordinator": "App\\Modules\\User\\Coordinators\\UserCoordinator"

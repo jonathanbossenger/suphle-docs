@@ -40,11 +40,11 @@ Before the server builds, it performs a series of checks against the codebase be
 
 These checks are dependency-based filtrations. The following filters are currently in place:
 
-- [Service-coordinator](/docs/v1/service-coordinators#Permitted-dependencies) restrictions. The reasoning behind each limitation is commented in the relevant filter.
+- [Service-coordinator](/docs/v2/service-coordinators#Permitted-dependencies) restrictions. The reasoning behind each limitation is commented in the relevant filter.
 
-- [Service class](/docs/v1/service-coordinators#Pure-services) restrictions.
+- [Service class](/docs/v2/service-coordinators#Pure-services) restrictions.
 
-- [Mailable](/docs/v1/io#mailing) restrictions.
+- [Mailable](/docs/v2/io#mailing) restrictions.
 
 ##### Static type checks
 
@@ -181,9 +181,9 @@ When the list of operations exceeds one and the number of values passed to the c
 
 #### Server storage
 
-This refers to ways in which ubiquitous data can be stored on the application server. The tradeoff here is that you become responsible for cache invalidation. Irrespective of the presence of [Flows](/docs/v1/flows), you ought to take advantage of all other opportunities optimization presents itself. From [caching](/docs/v1/io#caching) the result of static queries such as generic form drop-downs, to storing data in-memory in-between requests.
+This refers to ways in which ubiquitous data can be stored on the application server. The tradeoff here is that you become responsible for cache invalidation. Irrespective of the presence of [Flows](/docs/v2/flows), you ought to take advantage of all other opportunities optimization presents itself. From [caching](/docs/v2/io#caching) the result of static queries such as generic form drop-downs, to storing data in-memory in-between requests.
 
-This is one of the major advantages of a long-running server over the traditional ones -- data can be shared in-between requests originating from different users. The challenge with leveraging this is that Suphle will evict all classes used to handle a request to avoid its state from interferring with another request to the application. In order to forestall this on a class where data seeking longevity has been saved, the data can either be stored on a static property, or the class [should implement](/docs/v1/container#Stickying-objects) `Suphle\Contracts\Hydration\ClassHydrationBehavior`.
+This is one of the major advantages of a long-running server over the traditional ones -- data can be shared in-between requests originating from different users. The challenge with leveraging this is that Suphle will evict all classes used to handle a request to avoid its state from interferring with another request to the application. In order to forestall this on a class where data seeking longevity has been saved, the data can either be stored on a static property, or the class [should implement](/docs/v2/container#Stickying-objects) `Suphle\Contracts\Hydration\ClassHydrationBehavior`.
 
 Be careful not to implement this on a class that better exists in fresh state per request e.g. a Coordinator.
 

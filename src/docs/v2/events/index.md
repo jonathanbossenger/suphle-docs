@@ -10,7 +10,7 @@ A developer more accustomed to the age-old Transactional Script can initially wa
 
 ## Setting an event manager
 
-Event managers act as platform for all signal emission and reception pertaining to the module containing them. Modules aiming to perform either functionality are required to [supply a sub-class](/docs/v1/container#Binding-regular-interfaces) of `Suphle\Events\EventManager` as the binding for the parent interface, `Suphle\Contracts\Events`.
+Event managers act as platform for all signal emission and reception pertaining to the module containing them. Modules aiming to perform either functionality are required to [supply a sub-class](/docs/v2/container#Binding-regular-interfaces) of `Suphle\Events\EventManager` as the binding for the parent interface, `Suphle\Contracts\Events`.
 
 ```php
 
@@ -61,9 +61,9 @@ class CheckoutCart implements SystemModelEdit {
 
 In the example above, the `Events` interface is used, as opposed to the class, `AssignListeners`, or any other implementation you have. The concrete should be dictated by where it was bound and used no where else. The Framework is responsible for managing the concrete's life-cycle. Doing so on emitter classes will result in new instances of the implementation being created that are not booted by Suphle.
 
-**Note**: A more complete variation of `CheckoutCart` can be found in the [Programmatic updates](/docs/v1/service-coordinators#Programmatic-updates) chapter.
+**Note**: A more complete variation of `CheckoutCart` can be found in the [Programmatic updates](/docs/v2/service-coordinators#Programmatic-updates) chapter.
 
-Managers can be called from most scopes, although it's likely only service classes will be necessary to emit from. However, service coordinators are explicitly prohibited from importing event managers or emission. Doing so will throw an `Suphle\Exception\Explosives\DevError\UnacceptableDependency` exception at [compile-time](/docs/v1/application-server#Startup-operations). The reason for this is to dissuade any form of logic or computation that would distract us from the primary assignment within coordinators. Coordinators are simply not classes to be relied on by anyone except the framework.
+Managers can be called from most scopes, although it's likely only service classes will be necessary to emit from. However, service coordinators are explicitly prohibited from importing event managers or emission. Doing so will throw an `Suphle\Exception\Explosives\DevError\UnacceptableDependency` exception at [compile-time](/docs/v2/application-server#Startup-operations). The reason for this is to dissuade any form of logic or computation that would distract us from the primary assignment within coordinators. Coordinators are simply not classes to be relied on by anyone except the framework.
 
 There is a trait recommended to be combined with the manager during emissions, known as `Suphle\Events\EmitProxy`. It is used as follows:
 
@@ -118,7 +118,7 @@ class AssignListeners extends EventManager {
 
 		/**
 		 * Optional:
-		 * @see /docs/v1/database#Testing-the-data-layer
+		 * @see /docs/v2/database#Testing-the-data-layer
 		 */
 		parent::registerListeners();
 		
@@ -191,7 +191,7 @@ class AssignListeners extends EventManager {
 
 ### Listening to foreign events
 
-In the previous section, the `local` method was used to initialize a subscription scope between emittors and listeners within the same module. When an emittor wishes to broadcast an event to listener's outside its module, those modules ought not to concern themselves with the specific emitting classes services. All that should matter to them is [the module's API](/docs/v1/modules#Defining-producer-modules).
+In the previous section, the `local` method was used to initialize a subscription scope between emittors and listeners within the same module. When an emittor wishes to broadcast an event to listener's outside its module, those modules ought not to concern themselves with the specific emitting classes services. All that should matter to them is [the module's API](/docs/v2/modules#Defining-producer-modules).
 
 The beauty of utilising events to exchange commands between modules is nearly tainted by the fact that they tend to limit the amount of information one can deduce by looking at an originating action. It's difficult to assess effect of the scrutinised action, thereby making reasoning about it somewhat of an uphill task. Fortunately, interfaces (your module's API being no exception) can have constants. This implies one can simply check for all usages of the event constant, as a guiding light to locate subscribers if need be.
 
@@ -219,7 +219,7 @@ class AssignListeners extends EventManager {
 
 When Suphle encounters the `external` call, it anonymizes the actual emitter. This allows us transparently carry on development of other modules, providing implementations when ready without blocking.
 
-Modules don't [require importation](/docs/v1/modules#Consuming-sibling-modules) before they can listen to events from their sibling modules. In comparison with the more direct modular communication pattern, modules should only be used when:
+Modules don't [require importation](/docs/v2/modules#Consuming-sibling-modules) before they can listen to events from their sibling modules. In comparison with the more direct modular communication pattern, modules should only be used when:
 
 - It's imperative that the caller establishes a non-negotiable invocation sequence between itself and collaborators of intended behavior.
 
@@ -313,7 +313,7 @@ public function registerListeners ():void {
 
 ### Updating the database within events
 
-During the course of event emission, one or more of your listeners may modify the database using an `UpdatefulService` and any of its [recommended decorators](/docs/v1/service-coordinators#Mutative-database-decorators). As you may be aware, those decorators run your code within database transactions. The implication of this while using events is that if another service starts its own execution, it'll open another transaction independent of the original one. If an operation fails at some level, transactions already committed/completed handlers won't be rolled back like the outermost transaction.
+During the course of event emission, one or more of your listeners may modify the database using an `UpdatefulService` and any of its [recommended decorators](/docs/v2/service-coordinators#Mutative-database-decorators). As you may be aware, those decorators run your code within database transactions. The implication of this while using events is that if another service starts its own execution, it'll open another transaction independent of the original one. If an operation fails at some level, transactions already committed/completed handlers won't be rolled back like the outermost transaction.
 
 It may seem as if the independently good practices of events and database mutating decorators conflict when combined together. To get them working in unison, remember the following:
 
