@@ -133,10 +133,7 @@ protected function getModules ():array {
 
 			$container->replaceWithMock($config, $config, [
 
-				"getTemplateEntries" => [
-
-					$this->componentEntry()
-				]
+				"getTemplateEntries" => [$this->componentEntry()]
 			]);
 		})
 	];
@@ -197,6 +194,6 @@ public function test_override_option_unserializes_properly (array $installModes,
 	// merge modes with custom arguments
 
 	// when
-	$this->assertInstalledComponent($installModes);
+	$this->assertInstalledComponent($installModes); // or combine with getCommandOptions: $this->getCommandOptions($installModes);
 }
 ```

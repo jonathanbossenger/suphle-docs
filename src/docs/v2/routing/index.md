@@ -62,24 +62,24 @@ public function updateUser(): Json
 }
 ```
 
-## Named Routes
+## Route Expansion
 
-You can assign names to routes directly inside the `#[Route]` attribute using the `view_name` parameter. This makes it easy to generate URLs for those routes inside your views without hardcoding them.
+Route URLs can be derived from their respective handler methods, for example when routes are needed dynamically inside your views without hardcoding them.
 
 ```php
-use Suphle\Routing\Attributes\Route;
-use Suphle\Routing\HttpMethod;
+use Suphle\Routing\Attributes\{Route, RoutePrefix, HttpMethod};
+
 use Suphle\Response\Format\Markup;
 
+#[RoutePrefix("/products")]
 class ProductCoordinator
 {
-    public const SHOW_PRODUCT = 'products.show';
-
-    #[Route("products/{id}", HttpMethod::GET, view_name: self::SHOW_PRODUCT)]
-    public function showProduct(): Markup
+    #[Route("/{id}")]
+    public function showProduct(BaseProductBuilder $builder): Markup
     {
-        $id = $this->routeInfo->getSegmentValue("id");
-        return new Markup('products.show', ['id' => $id]);
+        $product = $builder->getBuilder()->first();
+        
+        return new Markup('products.show', ['id' => $product->id]);
     }
 }
 ```
@@ -88,12 +88,16 @@ When you return a `Markup` response, Suphle automatically injects the `$namedRou
 
 ```html
 <!-- Inside your Blade or Twig view -->
-<a href="{{ $namedRoutes->expandRoute(\App\Coordinators\ProductCoordinator::SHOW_PRODUCT, ['id' => 5]) }}">
+<a href="{{ $namedRoutes->expandRoute(\App\Coordinators\ProductCoordinator::class, 'showProduct', ['id' => 5]) }}">
     View Product
 </a>
 ```
 
-The `expandRoute` method will safely interpolate the parameters and trigger a `RuntimeException` if a parameter is missing or the route name doesn't exist.
+The `expandRoute` method will safely interpolate the parameters and trigger a `RuntimeException` if:
+
+- a parameter is missing
+- the route name doesn't exist
+- value is absent from payload reader
 
 ## Route Prefixing
 
@@ -785,7 +789,7 @@ use Suphle\Auth\Storage\TokenStorage;
 
 #[RoutePrefix(
     prefix: "profile", 
-    mirrorPrefix: "api/v1/profile",
+    mirrorPrefix: "api/v1",
     mirrorAuthenticator: TokenStorage::class
 )]
 class UserProfileCoordinator {

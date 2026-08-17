@@ -313,7 +313,7 @@ public function registerListeners ():void {
 
 ### Updating the database within events
 
-During the course of event emission, one or more of your listeners may modify the database using an `UpdatefulService` and any of its [recommended decorators](/docs/v2/service-coordinators#Mutative-database-decorators). As you may be aware, those decorators run your code within database transactions. The implication of this while using events is that if another service starts its own execution, it'll open another transaction independent of the original one. If an operation fails at some level, transactions already committed/completed handlers won't be rolled back like the outermost transaction.
+During the course of event emission, one or more of your listeners may modify the database using the `DomainService` attribute and implementing any of its [associated interfaces](/docs/v2/service-coordinators#Mutative-database-decorators). As you may be aware, those decorators run your code within database transactions. The implication of this while using events is that if another service starts its own execution, it'll open another transaction independent of the original one. If an operation fails at some level, transactions already committed/completed handlers won't be rolled back like the outermost transaction.
 
 It may seem as if the independently good practices of events and database mutating decorators conflict when combined together. To get them working in unison, remember the following:
 

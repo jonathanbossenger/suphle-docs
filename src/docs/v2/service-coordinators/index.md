@@ -441,11 +441,13 @@ In order to keep our Coordinators lean, cohesive and disciplined, they have a na
 
 - `Suphle\Security\CSRF\CsrfGenerator`
 
+- Classes annotated with `#[DomainService]`
+
 Attempting to inject a dependency outside this list will throw a `Suphle\Exception\Explosives\DevError\UnacceptableDependency` exception and prevent app server from being built. Details about each class is treated in its appropriate section.
 
 Action methods can only type-hint arguments extending `Suphle\Services\Structures\ModelfulPayload` and `Suphle\Services\Structures\ModellessPayload`. This is because any other service we want to inject will likely be applicable to other endpoints on this coordinator and should be injected through the constructor. Violating this rule will throw an `InvalidArgumentsException` while equally preventing app server from being built.
 
-## Securing POST requests
+## Securing PUT requests
 
 You may already be aware of the famous CSRF [middleware](/docs/v2/middlewares) customary for non-GET requests. In Suphle, this alone is not enough -- it's mandatory for such endpoints to use services that [facilitate such operations](#mutative-database-decorators), by injecting at least one service decorated with either `Suphle\Contracts\Services\Decorators\SystemModelEdit` or `Suphle\Contracts\Services\Decorators\MultiUserModelEdit`. Failure to adhere to this will throw a `Suphle\Exception\Explosives\DevError\MissingPostDecorator` runtime exception.
 
@@ -485,7 +487,9 @@ class ProductFinder {
 
 #### Database Mutating Services
 
-Services causing database side-effects must signal their intent by setting the `mutation` property to `true`. This informs the framework that the service is permitted to be a dependency for `POST`, `PUT`, or `DELETE` requests.
+Services participating in PUT requests that mutate existing records must be annotated with the `DomainService` attribute along with `mutation` argument set to `true`. This attribute and its complementary interfaces allow the framework to determine which models should be locked before the mutation executes.
+
+POST requests are exempt from this requirement because they typically create new records rather than modifying existing ones.
 
 ```php
 #[DomainService(mutation: true)]
@@ -719,17 +723,13 @@ class DatalessErrorThrower implements ServiceErrorCatcher {
 
 ##### Never return type
 
-Since PHP doesn't have generics yet, return value for `ServiceErrorCatcher::failureState` is untyped. But for consistency, it should correspond to whatever type the erring method would've return on successful execution. This means such methods are prohibited from having `void` or PHP 8's `never` return type, as they will interfer with an alternate result being returned on its behalf.
-
-##### Readonly modifier
-
-When using this decorator, as well as all others that extend from it, if the class has constructor promoted properties, those properties cannot use the signature `protected readonly`. They can only be `private readonly`, or the `readonly` keyword removed if the `protected` visibility must be present. This happens because the proxifier will try to reset the properties when they're protected but will be unable to do so since they're readonly. When they're private, it uses those on the original class.
+Since PHP doesn't have generics yet, return value for `ServiceErrorCatcher::failureState` is untyped. But for consistency, it should correspond to whatever type the erring method would've returned on successful execution. This means such methods are prohibited from having `void` or PHP 8's `never` return type, as they will interfer with an alternate result being returned on its behalf.
 
 -----
 
 ### Mutative Database Decorators
 
-Authorization and data integrity are handled at the service layer. Updating a database resource is restricted to authorized owners or specific system processes. To prevent race conditions, unauthorized access, or stale data updates, any service injected into a mutative (POST/PUT/PATCH/DELETE) route must be decorated with a specific Interceptor.
+Authorization and data integrity are handled at the service layer. Updating a database resource is restricted to authorized owners or specific system processes. To prevent race conditions, unauthorized access, or stale data updates, any service injected into a PUT route must be decorated with a specific Interceptor.
 
 These decorators ensure that:
 
