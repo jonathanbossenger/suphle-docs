@@ -1,11 +1,46 @@
 ## Introduction
 
-The term *Middleware* refers to common functionality we want to run before or after a request hits its coordinator action handler. "Common" in this context describes behavior that is applicable to diverse endpoints. They **shouldn't** be used for purposes that don't directly interact with the request/response objects.Got it — you want **one single Markdown code block**, with all inner code blocks **escaped** so they don’t render, and everything remains copy-paste safe.
+The term *Middleware* refers to common functionality we want to run before or after a request hits its coordinator action handler. "Common" in this context describes behavior that is applicable to diverse endpoints. They **shouldn't** be used for purposes that don't directly interact with the request/response objects.
+
+
+## Default middleware
+
+Middleware defined with this method will be executed for all requests coming into your application. They exist as a convenience as it'll be unrealistic to bind them to each and every route declared on the application. Even if they're not explicitly applicable to all routes, we want to have them in place at a central location, functioning without manual binding to routes.
+
+Generic middleware are declared on the `Suphle\Contracts\Config\Router` config like so:
+
+```php
+
+use Suphle\Config\Router;
+
+class RouterMock extends Router {
+
+    /**
+     * {@inheritdoc}
+    */
+    public function defaultMiddleware ():array {
+
+        return [
+            
+            SomeGenericMiddleware::class,
+
+            AnotherGenericMiddleware::class,
+
+            ...parent::defaultMiddleware()
+        ];
+    }
+}
+```
+
+The default `Router` config already specifies base middleware. Unless you intend to overtake the internals of request handling, it's advised that these base middleware reside at the bottom of the stack.
 
 ---
 
-#### 1. Security Middleware (`#[PreMiddleware]`)
-These run first and are typically used for Authentication and Authorization. Instead of just a class name, they can accept an array of arguments.
+## Route binding
+Middleware can be bound to routes at various points depending on the relevance or functionality expected of them.
+
+### Security Middleware (`#[PreMiddleware]`)
+During request lifecycle, these run first and are typically used for Authentication and Authorization. Instead of just a class name, they can accept an array of arguments.
 
 ```php
 #[RoutePrefix("admin")]
@@ -25,11 +60,51 @@ class AdminCoordinator {
 }
 ```
 
-#### 2. Standard Middleware (`#[Middleware]`)
-These handle general request/response logic like JSON formatting or logging.
+### Defining custom middleware
+
+Before deciding to implement target functionality as a middleware, it is strongly recommended that you reconsider there is no designated component, Suphle or otherwise, already designated for such feature. The likelihood that a middleware is well suited to accommodate a use-case increases with as many checkboxes below as it can tick:
+
+- Wide applicability across multiple URL patterns. They are the interfaces of routing.
+- It will either alter request execution path or contents/shape of response.
+- It depends on details read from incoming payload.
+- It doesn't precede routing decision e.g. coordinator/renderer choices. Routing work doesn't belong in middleware.
+
+After confirming middleware is the way to go for given functionality, we can go about creating one by extending the `Suphle\Middleware\BaseMiddleware` class. Every middleware/handler class receives the arguments you passed in the attribute (like your list of rules) via the `setArgs` method.
 
 ```php
-#[Middleware(FormatJsonHandler::class)]
+use Suphle\Contracts\{Presentation\BaseRenderer, Routing\Middleware};
+
+use Suphle\Middleware\{MiddlewareNexts, BaseMiddleware};
+
+use Suphle\Request\PayloadStorage;
+
+class AltersPayloadStorage extends BaseMiddleware
+{
+    public function process(PayloadStorage $payloadStorage, ?MiddlewareNexts $requestHandler): BaseRenderer
+    {
+
+        $payloadStorage->mergePayload($this->payloadUpdates());
+
+        return $requestHandler->handle($payloadStorage);
+    }
+
+    public function payloadUpdates(): array
+    {
+
+        return ["foo" => "bar"];
+    }
+}
+```
+
+### Binding secondary middleware
+
+The `Suphle\Routing\Attribute\Middleware` attribute enables us apply middleware that should execute after pre-middleware. They can be applied at both the class and method level.
+
+```php
+use Suphle\Routing\Attribute\{Middleware, RoutePrefix, Route};
+
+#[Middleware(AltersPayloadStorage::class)]
+#[RoutePrefix("/api/v1")]
 class ApiCoordinator {
 
     #[Route("profile")]
@@ -39,8 +114,8 @@ class ApiCoordinator {
 
 ---
 
-#### 3. Clearing Inherited Middleware
-If a class-level middleware is making a specific route inaccessible, you can "yank" it out using `#[ClearMiddleware]`.
+### Clearing Inherited Middleware
+The `Suphle\Routing\Attribute\ClearMiddleware` is often used to remove middleware inherited on a method by its parent class:
 
 ```php
 #[PreMiddleware(AuthenticateHandler::class)]
@@ -54,47 +129,36 @@ class PublicCoordinator {
 
 ---
 
-#### 4. The Backing Class (Handler)
-The **Handler** is the code that actually runs. Every handler receives the arguments you passed in the attribute (like your list of rules) via the `setArgs` method.
+### Post-coordinator execution
+
+`AltersPayloadStorage::process` has a statement that reads,
 
 ```php
-namespace App\Middleware;
 
-class AuthenticateHandler extends BaseMiddleware {
+return $requestHandler->handle($payloadStorage);
+```
 
-    public function process(PayloadStorage $request, ?MiddlewareNexts $next): BaseRenderer
-        
-        foreach ($this->userArgs as $ruleClass) {
-            $rule = $this->container->getClass($ruleClass);
-            
-            if (!$rule->permit()) {
-                throw new Exception("Access Denied");
-            }
-        }
-    }
+The `$requestHandler` argument allows each middleware forward execution to the next one below it. Middleware can either interrupt execution of subsequent middleware by excluding that statement, or modifying value returned by it. Suppose we want to add additional keys on all arrays returned by Coordinators this middleware is applied to, we'd adjust it as follows:
+
+```php
+
+public function process (
+
+        PayloadStorage $request, ?MiddlewareNexts $requestHandler
+):BaseRenderer {
+
+    $originalRenderer = $requestHandler->handle($request);
+
+    $originalRenderer->setRawResponse(array_merge(
+
+        $originalRenderer->getRawResponse(), ["foo" => "baz"]
+    ));
+
+    return $originalRenderer;
 }
 ```
 
----
-
-### Quick Reference
-
-| Type | Attribute | Use Case |
-| :--- | :--- | :--- |
-| **Global** | Defined in Config | Applied to every single request in the module. |
-| **Security** | `#[PreMiddleware]` | Runs first. Used for login and permission checks. |
-| **Standard** | `#[Middleware]` | Runs after security. Used for data processing. |
-| **Negation** | `#[ClearMiddleware]` | Removes a specific handler inherited from the class. |
----
-
-## Execution Lifecycle
-
-The framework assembles the stack in the following order:
-
-1.  **Default Middleware:** The outermost shell (e.g., CSRF).
-2.  **Scrutinizers:** The security gate (Early exit if unauthorized).
-3.  **Collectors:** The request/response processors.
-4.  **Coordinator:** The target method logic.
+Even though the middleware may have been ordered earlier in the stack, the method definition above would cause it to technically run after those below it.
 
 ## Testing middleware
 
@@ -108,7 +172,7 @@ We may want to include or exempt one or more middleware from executing on match 
 
 public function test_middleware_behavior_on_route_x {
 
-	$this->withMiddleware([new ActorsMiddlewareFunnel("SEGMENT")]) // given
+	$this->withMiddleware([ActorsMiddlewareFunnel::class]) // given
 
 	->get("/segment/id") // when
 
@@ -124,7 +188,7 @@ These methods save us from mocking or doubling middleware classes. When greater 
 
 ### Verifying middleware execution
 
-When we want to verify whether a middleware has been obstructed by a preceding one or for internal development, we use the `assertUsedCollectorNames`, and its inverse `assertDidntUseCollectorNames`, assertion methods.
+When we want to verify whether a middleware has been obstructed by a preceding one or for internal development, we use the `assertUsedMiddleware`, and its inverse `assertDidntUseMiddleware`, assertion methods.
 
 ```php
 
@@ -136,7 +200,7 @@ public function test_middleware_x_runs_on_route_y {
 
 	->assertOk(); // sanity check
 
-	$this->assertUsedCollectorNames([ActorsMiddleware::class]); // then
+	$this->assertUsedMiddleware([ActorsMiddleware::class]); // then
 }
 ```
 

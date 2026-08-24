@@ -258,19 +258,22 @@ public function test_unauthorized_getter_throws_error () {
 }
 ```
 
-##### assertExceptionUsesRenderer
+##### assertExceptionFlushesData
 
-We use this method when writing custom exception diffusers or modifying existing ones, to determine whether it evaluates to the correct renderer. It performs a shallow comparison of renderer handlers rather than a deep one. Suppose our `NotFoundException` exception sports a diffuser with a renderer handled by a `missingHandler` method, we'd assert it runs successfully like so:
+We use this method when writing custom exception diffusers or modifying existing ones, to determine whether it returns the expected value. Suppose our `NotFoundException` exception sports a diffuser returning certain data, we could verify its contents like so:
 
 ```php
 
 public function test_exceptions_uses_assigned_handler () {
+    $url = "/non-existent";
 
-	$this->assertExceptionUsesRenderer( // then
-	
-		new Markup("missingHandler", ""),
+    $this->get($url); // given // just to populate url internally
 
-		function () {
+    $this->assertExceptionFlushesData( // then
+
+        ["message" => $url . " Not Found"],
+
+		function ():never {
 
 			throw new NotFoundException; // when
 		}
@@ -278,4 +281,4 @@ public function test_exceptions_uses_assigned_handler () {
 }
 ```
 
-The callback will be ran in the context of given module, and the test-type will be expect an exception to be thrown, as well as for its complementary handler to return a renderer matching expected one. The assertion above will fail if no exception is thrown.
+The callback will be ran in the context of given module, and the test-type will be expect an exception to be thrown. The assertion above will fail if no exception is thrown.

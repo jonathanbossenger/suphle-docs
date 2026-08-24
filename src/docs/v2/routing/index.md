@@ -62,24 +62,29 @@ public function updateUser(): Json
 }
 ```
 
+Optional route parameters are deliberately omitted as they're an anti-pattern warranting cramming multiple routes with incompatible authentication mechanisms or query logic, under a single handler.
+
 ## Route Expansion
 
 Route URLs can be derived from their respective handler methods, for example when routes are needed dynamically inside your views without hardcoding them.
 
 ```php
+use Suphle\Services\BaseCoordinator;
+
 use Suphle\Routing\Attributes\{Route, RoutePrefix, HttpMethod};
 
 use Suphle\Response\Format\Markup;
 
 #[RoutePrefix("/products")]
-class ProductCoordinator
+class ProductCoordinator extends BaseCoordinator
 {
-    #[Route("/{id}")]
-    public function showProduct(BaseProductBuilder $builder): Markup
+    #[Route("/{id}/delete", HttpMethod::POST)]
+    public function deleteProduct( BaseProductBuilder $builder): Reload
     {
-        $product = $builder->getBuilder()->first();
+        if ($builder->getBuilder()->delete()) // or pass to service if additional work needed
+            $this->sessionClient->setValue("message", "Product deleted successfully");
         
-        return new Markup('products.show', ['id' => $product->id]);
+        return new Reload();
     }
 }
 ```
@@ -88,12 +93,15 @@ When you return a `Markup` response, Suphle automatically injects the `$namedRou
 
 ```html
 <!-- Inside your Blade or Twig view -->
-<a href="{{ $namedRoutes->expandRoute(\App\Coordinators\ProductCoordinator::class, 'showProduct', ['id' => 5]) }}">
-    View Product
-</a>
+<form method="POST" action="{{ $namedRoutes->expressUrl(\App\Coordinators\ProductCoordinator::class, 'deleteProduct', ['id' => $product->id]) }}">
+    
+    <input type="hidden" name="_csrf_token" value="{{ $csrf_token }}">
+    
+    <button type="submit" class="btn btn-danger">Delete Product</button>
+</form>
 ```
 
-The `expandRoute` method will safely interpolate the parameters and trigger a `RuntimeException` if:
+The `expressUrl` method will safely interpolate the parameters and trigger a `RuntimeException` if:
 
 - a parameter is missing
 - the route name doesn't exist
@@ -181,7 +189,7 @@ class ProductsV2Coordinator extends ProductsV1Coordinator
 }
 ```
 
-The scanner reads `getMethods(IS_PUBLIC)` on the V2 class, which returns all three methods (`index`, `show`, `store`) — two inherited, one overridden. All three get registered under the V2 prefix. **V1 routes remain completely untouched.**
+The scanner returns all three methods (`index`, `show`, `store`) — two inherited, one overridden. All three get registered under the V2 prefix. **V1 routes remain completely untouched.**
 
 ## HTTP Methods
 
@@ -197,118 +205,27 @@ use Suphle\Routing\HttpMethod;
 #[Route("users/{id}", HttpMethod::DELETE)] // DELETE request
 ```
 
-## Canary Releases (Feature Flags)
-
-Suphle provides a clean, decoupled mechanism for implementing feature flags, A/B testing, temporary features, and gradual rollouts. Instead of scattering conditional logic across your front and back end code, Suphle centralizes decision-making into reusable **Canary Evaluators**.
-
-### Defining Canary Evaluators
-
-A **Canary Evaluator** is a class responsible for determining whether a specific condition is met (for example: user ID ranges, request headers, roles, or IP segments). To create one, implement `Suphle\Contracts\Routing\CanaryEvaluator`. The core method:
-
-- `willLoad(): ?string`  
-  - Return a **string slug** if the condition passes  
-  - Return **null** if it fails
-
-```php
-use Suphle\Contracts\Routing\CanaryEvaluator;
-use Suphle\Contracts\Auth\AuthStorage;
-
-class BetaUserCanary implements CanaryEvaluator {
-
-    public function __construct(
-        protected readonly AuthStorage $authStorage
-    ) {}
-
-    public function willLoad(): ?string {
-        $userId = $this->authStorage->getId();
-        
-        // Users under ID 1000 are part of the beta rollout
-        return ($userId && $userId < 1000) ? 'beta' : null;
-    }
-}
-```
-#### Canary Evaluator Characteristics
-
-- **First-Match Wins**: Evaluation stops as soon as one evaluator returns a non-null value. Later evaluators are not executed.
-
-- **Decoupled Logic**: Each evaluator is:
-
-    - A standalone class  
-    - Fully testable in isolation  
-    - Reusable across multiple Coordinators
-    - Canary logic stays **explicit inside your Coordinator methods**
-
-These keep behavior predictable and easy to debug. This model gives you precise control over feature exposure without compromising code clarity or performance.
-
-- Always inject dependencies like `AuthStorage` or request abstractions. Avoid direct access to globals like `$_SESSION`.
-
----
-
-### Registering Canaries
-
-Attach evaluators to a **Coordinator class** using the `#[CanaryState]` attribute.
-
-Suphle will evaluate them **in order**, stopping at the first match.
-
-```php
-use Suphle\Routing\Attributes\CanaryState;
-
-#[RoutePrefix('api/v1')]
-#[CanaryState([
-    BetaUserCanary::class,
-    EarlyAdopterCanary::class
-])]
-class UserCoordinator extends BaseCoordinator {
-    public function __construct(protected readonly UserService $service) {}
-}
-```
-
----
-
-### Consuming the Canary State
-
-Canary evaluation is **lazy**—it only runs when explicitly requested.
-
-#### In a Coordinator
-
-Use `RequestDetails::getCanaryState()` to retrieve the active state:
-
-```php
-#[Route('/dashboard')]
-public function dashboard(): Markup {
-    $state = $this->requestDetails->getCanaryState();
-
-    $input = $payload->getDomainObject();
-
-    return match ($state) {
-        'beta' => new Markup("/dashboard/v2-experimental", $this->service->dashBeta($input)),
-
-        'early-adopter' => new Markup("/dashboard/v1-with-new-sidebar", $this->service->dashEarly($input)),
-
-        default => new Markup("/dashboard/main", $this->service->dashMain())
-    };
-}
-```
-
----
-
-#### In Templates (Views)
-
-You can either return views fully dedicated to the context or insert indicators in your existing templates by injecting the resolved state as a `canary_state` variable. It will allow for conditional rendering like so:
-
-```html
-@if ($canary_state == "beta")
-    <!-- Show experimental UI -->
-@endif
-```
-
----
-
 ## Response Formats
 
-Routes return response objects that define the output format:
+In Suphle, **Renderers** are responsible for transforming the output of a Coordinator method into a final HTTP response. Rather than returning raw arrays or primitives, every action must return a Renderer, ensuring consistency across both browser and API contexts.
+
+All native renderers extend a shared base (`GenericRenderer`) and expose a common method:
+
+- `setHeaders(int $code, array $headers)`
+
+This allows you to override HTTP status codes and headers at the final stage of the response lifecycle.
 
 ### JSON Responses
+
+The simplest and most direct renderer.
+
+It takes the Coordinator’s output and passes it through `json_encode`.
+
+### Use Case
+
+- API endpoints
+- Lightweight responses
+- Status checks
 
 ```php
 use Suphle\Response\Format\Json;
@@ -324,6 +241,19 @@ public function listUsers(): Json
 
 ### HTML Responses
 
+The `Markup` renderer is used for **HTML responses**.
+
+It requires:
+
+- A template path
+- Optional data to be passed into the view
+
+### Use Case
+
+- Server-rendered pages
+- Dashboards
+- Forms and UI views
+
 ```php
 use Suphle\Response\Format\Markup;
 
@@ -338,6 +268,22 @@ public function showUsers(): Markup
 
 ### Redirects
 
+The `Redirect` renderer is used to navigate the user to a different URL. It behaves intelligently depending on the request context, making it one of the few **Mirror-aware** renderers in Suphle.
+
+#### Context-Aware Behavior
+
+- **Browser Requests**  
+  Returns a standard `302 Found` redirect.
+
+- **API / JSON Requests**  
+  Returns a `200 OK` response with a JSON payload:
+
+  ```json
+  { "redirect": "/target-url" }
+  ```
+
+This allows frontend clients (e.g., SPAs or mobile apps) to handle navigation manually instead of relying on HTTP redirects.
+
 ```php
 use Suphle\Response\Format\Redirect;
 
@@ -350,23 +296,114 @@ public function createUser(): Redirect
 }
 ```
 
-### Reload (Form Validation)
+#### Dynamic Destinations (Auto-wired Closures)
+
+Instead of passing a static URL, the `Redirect` constructor accepts a `Closure`. This closure is **auto-wired** by the container at runtime.
+
+This means:
+
+- You can type-hint dependencies (services, config, etc.)
+- Suphle will automatically resolve and inject them
+- You can access the Coordinator's result via `$this->rawResponse`
 
 ```php
-use Suphle\Response\Format\Reload;
+#[Route("payment/process", HttpMethod::POST)]
+public function processPayment(CartBuilder $builder): Redirect {
 
-#[Route("users/create", HttpMethod::POST)]
-public function createUser(): Reload
-{
-    // Process the user creation
-    $this->userService->create($this->payloadReader->getAll());
+    $transactionId = $this->service->updateModels($builder->getBuilder());
+
+    return new Redirect(function (PaystackLibrary $gateway) use ($transactionId) {
+        
+        return $gateway->generateUrl($transactionId);
+    });
+}
+```
+
+#### Note on Persistence
+
+Since renderers may be serialized internally:
+
+- Avoid directly capturing non-serializable objects (e.g., PDO, ORM models)
+- Use **curried or nested closures** if needed to defer resolution safely
+
+---
+
+### Reload (Form Validation)
+
+The `Reload` renderer represents a **smart refresh** of the previous page.
+
+Instead of redirecting blindly, it:
+
+1. Retrieves the last `GET` renderer from session storage
+2. Re-executes it
+3. Merges the current action's result into it
+
+### Key Characteristics
+
+- **Default Status Code:** `200 OK`
+- **State Preservation:** Maintains UI continuity (e.g., success messages after form submission)
+
+```php
+#[Route("/feedback", HttpMethod::POST)]
+#[ValidationRules([])]
+public function handleFeedback(BaseProductBuilder $builder): Reload {
     
-    // Return Reload - framework handles validation data automatically
+    $this->service->updateModels($builder->getBuilder());
+
     return new Reload();
 }
 ```
 
-**Note**: The `Reload` renderer is primarily used by the framework's validation system. When validation fails, the `ValidationFailureDiffuser` automatically creates a `Reload` renderer with validation errors and old input data. Use empty constructor to preserve v1 behavior.
+This is the preferred pattern for handling form submissions in Suphle.
+
+The `Reload` renderer is primarily used by the framework's validation system. When validation fails, the `ValidationFailureDiffuser` automatically creates a `Reload` renderer with validation errors and old input data.
+
+## LocalFileDownload
+
+`LocalFileDownload` extends `Redirect` and is designed for **serving files from the local filesystem**.
+
+### Constructor Signature
+
+```
+LocalFileDownload(
+    Closure $deriveFilePath,
+    ?Closure $fallbackRedirect
+)
+```
+
+### Behavior
+
+- Dynamically resolves the file path using a closure
+- Streams the file to the user if it exists
+- Gracefully handles missing files via a fallback
+
+### Features
+
+- **Auto-wiring support** in both closures
+- **Graceful failure handling** (optional redirect instead of crash)
+
+```php
+#[Route("invoice/{id}/download")]
+public function downloadInvoice(BaseProductBuilder $builder): LocalFileDownload {
+
+    $id = $this->service->approveDownload($builder->getBuilder());
+
+    return new LocalFileDownload(
+        function (ModuleFiles $files) use ($id) {
+            
+            if (!is_null($id)) return $files->activeModulePath() ."storage/inv_$id.pdf";
+        },
+        fn () => "/invoices/error"
+    );
+}
+```
+
+If the file is missing:
+
+- A `404` is triggered
+- User is redirected (if fallback is provided)
+
+---
 
 ## Router Configuration
 
@@ -381,7 +418,7 @@ class RouterMock extends Router
 {
     public function getCoordinatorPath(): string
     {
-        return "Controllers"; // Relative path to coordinator classes
+        return "Controllers"; // Relative path to module
     }
 
     public function getCoordinatorClassesToScan(): array
@@ -522,192 +559,6 @@ Suphle’s CRUD system:
 
 It strikes a balance between **developer productivity** and **architectural clarity**.
 
-## Native Renderers
-
-In Suphle, **Renderers** are responsible for transforming the output of a Coordinator method into a final HTTP response. Rather than returning raw arrays or primitives, every action must return a Renderer, ensuring consistency across both browser and API contexts.
-
-All native renderers extend a shared base (`GenericRenderer`) and expose a common method:
-
-- `setHeaders(int $code, array $headers)`
-
-This allows you to override HTTP status codes and headers at the final stage of the response lifecycle.
-
----
-
-## Redirect
-
-The `Redirect` renderer is used to navigate the user to a different URL. It behaves intelligently depending on the request context, making it one of the few **Mirror-aware** renderers in Suphle.
-
-### Context-Aware Behavior
-
-- **Browser Requests**  
-  Returns a standard `302 Found` redirect.
-
-- **API / JSON Requests**  
-  Returns a `200 OK` response with a JSON payload:
-
-  ```json
-  { "redirect": "/target-url" }
-  ```
-
-This allows frontend clients (e.g., SPAs or mobile apps) to handle navigation manually instead of relying on HTTP redirects.
-
----
-
-### Dynamic Destinations (Auto-wired Closures)
-
-Instead of passing a static URL, the `Redirect` constructor accepts a `Closure`. This closure is **auto-wired** by the container at runtime.
-
-This means:
-
-- You can type-hint dependencies (services, config, etc.)
-- Suphle will automatically resolve and inject them
-- You can access the Coordinator's result via `$this->rawResponse`
-
-```php
-#[Route("payment/process", HttpMethod::POST)]
-public function processPayment(): Redirect {
-    return new Redirect(function (PaymentGateway $gateway) {
-        // Access result from this method
-        return $gateway->generateUrl(
-            $this->rawResponse["transaction_id"]
-        );
-    });
-}
-```
-
-### Important Note on Persistence
-
-Since renderers may be serialized internally:
-
-- Avoid directly capturing non-serializable objects (e.g., PDO, ORM models)
-- Use **curried or nested closures** if needed to defer resolution safely
-
----
-
-## Reload
-
-The `Reload` renderer represents a **smart refresh** of the previous page.
-
-Instead of redirecting blindly, it:
-
-1. Retrieves the last `GET` renderer from session storage
-2. Re-executes it
-3. Merges the current action's result into it
-
-### Key Characteristics
-
-- **Default Status Code:** `200 OK`
-- **State Preservation:** Maintains UI continuity (e.g., success messages after form submission)
-
-```php
-#[Route("feedback", HttpMethod::POST)]
-public function handleFeedback(): Reload {
-    $this->service->save(
-        $this->payloadStorage->all()
-    );
-
-    return new Reload();
-}
-```
-
-This is the preferred pattern for handling form submissions in Suphle.
-
----
-
-## LocalFileDownload
-
-`LocalFileDownload` extends `Redirect` and is designed for **serving files from the local filesystem**.
-
-### Constructor Signature
-
-```
-LocalFileDownload(
-    Closure $deriveFilePath,
-    ?Closure $fallbackRedirect
-)
-```
-
-### Behavior
-
-- Dynamically resolves the file path using a closure
-- Streams the file to the user if it exists
-- Gracefully handles missing files via a fallback
-
-### Features
-
-- **Auto-wiring support** in both closures
-- **Graceful failure handling** (optional redirect instead of crash)
-
-```php
-#[Route("invoice/{id}/download")]
-public function downloadInvoice(int $id): LocalFileDownload {
-    return new LocalFileDownload(
-        function (ModuleFiles $files) use ($id) {
-            return $files->activeModulePath() .
-                "storage/inv_$id.pdf";
-        },
-        fn () => "/invoices/error"
-    );
-}
-```
-
-If the file is missing:
-
-- A `404` is triggered
-- User is redirected (if fallback is provided)
-
----
-
-## Json
-
-The simplest and most direct renderer.
-
-It takes the Coordinator’s output and passes it through `json_encode`.
-
-### Use Case
-
-- API endpoints
-- Lightweight responses
-- Status checks
-
-```php
-#[Route("api/status")]
-public function status(): Json {
-    return new Json([
-        "status" => "online"
-    ]);
-}
-```
-
----
-
-## Markup
-
-The `Markup` renderer is used for **HTML responses**.
-
-It requires:
-
-- A template path
-- Optional data to be passed into the view
-
-### Use Case
-
-- Server-rendered pages
-- Dashboards
-- Forms and UI views
-
-```php
-#[Route("dashboard")]
-public function dashboard(): Markup {
-    return new Markup("user.dashboard", [
-        "stats" => $this->service->getStats()
-    ]);
-}
-```
-
----
-
 ## Customizing Response Metadata
 
 Since all renderers inherit from `GenericRenderer`, you can modify the final HTTP response before returning it.
@@ -729,25 +580,7 @@ public function custom(): Json {
     return $renderer;
 }
 ```
-
-### What You Can Control
-
-- **Status Code** (e.g., `200`, `202`, `404`)
-- **Headers** (custom metadata, caching, etc.)
-
 ---
-
-## Summary
-
-Suphle’s Renderer system provides:
-
-1. **Strict response consistency** (no raw outputs)
-2. **Context-aware behavior** (Browser vs API)
-3. **Flexible composition via closures**
-4. **State-aware navigation (`Reload`)**
-5. **Extensibility through shared base class**
-
-Renderers are not just output formatters—they are a core part of Suphle’s request lifecycle and flow orchestration.
 
 ## Route Mirroring
 
@@ -823,6 +656,96 @@ Unlike standard content negotiation, Suphle Mirroring creates **dual paths**. Th
 1. **URL Clarity:** APIs have their own versioned paths (e.g., `/api/v1/...`).
 2. **Security Decoupling:** You can swap a session-based browser authenticator for a token-based API authenticator automatically.
 3. **Automatic Discovery:** We detect mirrored routes and includes them in API documentation and route lists without extra code.
+
+---
+
+## Canary Releases (Feature Flags)
+
+Suphle provides a clean, decoupled mechanism for implementing feature flags, A/B testing, temporary features, and gradual rollouts. Instead of scattering conditional logic across your front and back end code, Suphle centralizes decision-making into reusable **Canary Evaluators**.
+
+### Defining Canary Evaluators
+
+A **Canary Evaluator** is a class responsible for determining whether a specific condition is met (for example: user ID ranges, request headers, roles, or IP segments). To create one, implement `Suphle\Contracts\Routing\CanaryEvaluator`. The core method:
+
+- `willLoad(): ?string`  
+  - Return a **string slug** if the condition passes  
+  - Return **null** if it fails
+
+```php
+use Suphle\Contracts\{Routing\CanaryEvaluator, Auth\AuthStorage};
+
+class BetaUserCanary implements CanaryEvaluator {
+
+    public function __construct(
+        protected readonly AuthStorage $authStorage
+    ) {}
+
+    public function willLoad(): ?string {
+        $userId = $this->authStorage->getId();
+        
+        // Users under ID 1000 are part of the beta rollout
+        return ($userId && $userId < 1000) ? 'beta' : null;
+    }
+}
+```
+
+Each evaluator is:
+
+- A standalone class  
+- Fully testable in isolation  
+- Reusable across multiple Coordinators
+- Canary logic stays **explicit inside your Coordinator methods**
+
+These keep behavior predictable and easy to debug. This model gives you precise control over feature exposure without compromising code clarity or performance.
+
+- Always inject dependencies like `AuthStorage` or request abstractions. Avoid direct access to globals like `$_SESSION`.
+
+---
+
+### Consuming the Canary State
+
+Attach evaluators to a **Coordinator class** using the `#[CanaryState]` attribute. Canary evaluation is lazy—it only runs when explicitly requested.
+
+#### In a Coordinator
+
+Use `RequestDetails::getCanaryState()` to retrieve the active state:
+
+```php
+use Suphle\Routing\Attributes\{CanaryState, RoutePrefix, Route};
+
+#[RoutePrefix('api/v1')]
+#[CanaryState([BetaUserCanary::class, EarlyAdopterCanary::class])]
+class UserCoordinator extends BaseCoordinator {
+
+    public function __construct(protected readonly UserService $service) {}
+
+    #[Route('/dashboard')]
+    public function dashboard(BaseProductBuilder $builder): Markup {
+
+        $builder = $builder->getBuilder();
+
+        return match ($this->requestDetails->getCanaryState()) {
+            'beta' => new Markup("/dashboard/v2-experimental", $this->service->dashBeta($builder)),
+
+            'early-adopter' => new Markup("/dashboard/v1-with-new-sidebar", $this->service->dashEarly($builder)),
+
+            default => new Markup("/dashboard/main", $this->service->dashMain())
+        };
+    }
+}
+```
+
+---
+
+#### In Templates (Views)
+
+You can either return views fully dedicated to the context or insert indicators in your existing templates by injecting the resolved state as a `canary_state` variable. It will allow for conditional rendering like so:
+
+```html
+@if ($canary_state == "beta")
+    <!-- Show experimental UI -->
+@endif
+```
 
 ---
 
@@ -973,7 +896,7 @@ The analyzer is designed around real Suphle development patterns:
 
 You can freely delegate heavy lifting to services while still getting rich, accurate response documentation.
 
-#### Why This Is Significant
+#### Auto-docs generation perks
 
 In dynamic languages like PHP, frontend teams often struggle because response shapes are unclear. Developers coming from strongly-typed backend ecosystems expect detailed response structures in their API docs.
 
@@ -1016,7 +939,7 @@ While the analyzer is effective for standard Suphle patterns, it has the followi
 
 ---
 
-### Installation
+### Enabling auto-doc generation
 
 Install the component template:
 
