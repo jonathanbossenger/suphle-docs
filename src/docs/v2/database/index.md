@@ -238,28 +238,7 @@ The underlying command being forwarded to the Artisan runner, along with its par
 
 ## Testing the data layer
 
-Database testing is restricted to module-level test-types, in accordance with the Eloquent ORM. The next paragraph can be skipped if the reason for this is irrelevant to you.
-
-In order to synchronize URL requests coming into the Suphle application with the container necessary for the ORM to function, a `RequestDetails` instance is required when accessing either database objects or the crutches that facilitate testing this layer. Soon after its creation, this instance emits an event, `RequestDetails::ON_REFRESH`, and [as you know](/docs/v2/events/#Setting-an-event-manager), events cannot exist without a module.
-
-Any test whose needs cuts across any of these entities is advised to include a call to the `parent` class from your `Events` implementation.
-
-```php
-
-use Suphle\Events\EventManager;
-
-class AssignListeners extends EventManager {
-
-	public function registerListeners():void {
-
-		parent::registerListeners();
-		
-		// your bindings here...
-	}
-}
-```
-
-That's all there is to the module-level restraint. `Suphle\Testing\Condiments\BaseDatabasePopulator` is a trait used for exposing ORM agnostic pointers for modifying and observing the state of the database before and after making changes in the testing context.
+Database testing is restricted to module-level test-types. `Suphle\Testing\Condiments\BaseDatabasePopulator` is a trait used for exposing ORM agnostic pointers for modifying and observing the state of the database before and after making changes in the testing context.
 
 ### Declaring test model
 
